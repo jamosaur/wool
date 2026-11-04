@@ -1,0 +1,215 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/svenluijten/wool/main/schema/workspace.schema.json",
+  "title": "wool workspace file (.herdr/workspace.yml(.dist)), razajamil/herdr-plugin-workspace-manager's layout vocabulary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "tabs"
+  ],
+  "properties": {
+    "version": {
+      "const": 1,
+      "description": "wool extension."
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment variables (NAME: value).",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ]
+      }
+    },
+    "tabs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "panes"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "panes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "description": "Accepted for razajamil compatibility; Herdr panes have no settable title, so wool ignores it."
+                },
+                "command": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Runs in your interactive shell; the shell stays when it exits."
+                },
+                "agent": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "wool extension value 'default': your most-picked installed agent. Or an agent key (claude, codex, ...)."
+                },
+                "prompt": {
+                  "type": "string",
+                  "description": "The agent's first message. Needs agent."
+                },
+                "env": {
+                  "type": "object",
+                  "description": "Environment variables (NAME: value).",
+                  "propertyNames": {
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  },
+                  "additionalProperties": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ]
+                  }
+                },
+                "split": {
+                  "enum": [
+                    "right",
+                    "down",
+                    "vertical",
+                    "horizontal"
+                  ],
+                  "description": "How this pane splits from the previous one (vertical = right, horizontal = down). Not on a tab's first pane. Default right."
+                },
+                "size": {
+                  "description": "Accepted for razajamil compatibility; Herdr's split commands take no size, so wool ignores it.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^\\d+(\\.\\d+)?%$"
+                    }
+                  ]
+                },
+                "setup": {
+                  "type": "boolean",
+                  "description": "This pane shows setup's output, then runs its command after setup succeeds. At most one per file; not on an agent pane."
+                },
+                "waitForSetup": {
+                  "type": "boolean",
+                  "description": "wool extension: the command waits for setup to succeed and doesn't run if it fails. Needs command."
+                },
+                "focus": {
+                  "type": "boolean",
+                  "description": "wool extension: this pane has the keyboard when the space opens. At most one."
+                }
+              },
+              "allOf": [
+                {
+                  "not": {
+                    "required": [
+                      "command",
+                      "agent"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "required": [
+                      "prompt"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "agent"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "required": [
+                      "waitForSetup"
+                    ],
+                    "properties": {
+                      "waitForSetup": {
+                        "const": true
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "command"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "required": [
+                      "setup"
+                    ],
+                    "properties": {
+                      "setup": {
+                        "const": true
+                      }
+                    }
+                  },
+                  "then": {
+                    "not": {
+                      "required": [
+                        "agent"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "background": {
+      "type": "array",
+      "description": "wool extension: commands with no pane.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "env": {
+            "type": "object",
+            "description": "Environment variables (NAME: value).",
+            "propertyNames": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
+          "waitForSetup": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}
