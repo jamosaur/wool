@@ -1,21 +1,19 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/svenluijten/wool/main/schema/workspace.schema.json",
-  "title": "wool workspace file (.herdr/workspace.yml(.dist)), razajamil/herdr-plugin-workspace-manager's layout vocabulary",
+  "$id": "https://raw.githubusercontent.com/svenluijten/wool/main/schema/wool.schema.json",
+  "title": "wool config (.herdr/wool.yml(.dist)): setup steps and the space layout",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "version",
-    "tabs"
+    "version"
   ],
   "properties": {
     "version": {
-      "const": 1,
-      "description": "wool extension."
+      "const": 1
     },
     "env": {
       "type": "object",
-      "description": "Environment variables (NAME: value).",
+      "description": "Environment variables (NAME: value) for every setup step, pane and background command, under their own env.",
       "propertyNames": {
         "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
       },
@@ -25,6 +23,43 @@
           "number",
           "boolean"
         ]
+      }
+    },
+    "setup": {
+      "type": "array",
+      "description": "Setup steps, run in order in the new worktree; the first failure stops setup. [] is valid.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "run"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Label shown while it runs."
+          },
+          "run": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Run as /bin/sh -c <run> in the new worktree."
+          },
+          "env": {
+            "type": "object",
+            "description": "Environment variables (NAME: value), over the top-level env.",
+            "propertyNames": {
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          }
+        }
       }
     },
     "tabs": {
@@ -175,11 +210,12 @@
             }
           }
         }
-      }
+      },
+      "description": "The layout for a space that arrives as a plain shell. Leave it out for setup only."
     },
     "background": {
       "type": "array",
-      "description": "wool extension: commands with no pane.",
+      "description": "wool extension: commands with no pane. Needs tabs.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -211,5 +247,22 @@
         }
       }
     }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "setup"
+      ]
+    },
+    {
+      "required": [
+        "tabs"
+      ]
+    }
+  ],
+  "dependencies": {
+    "background": [
+      "tabs"
+    ]
   }
 }

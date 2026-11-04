@@ -11,7 +11,7 @@ export function setupScript(steps, env) {
   const q = shellQuote;
   const lines = [
     "#!/bin/sh",
-    "# Written by wool from the repo's .herdr/worktrees.yml(.dist). Runs once.",
+    "# Written by wool from the repo's .herdr/wool.yml(.dist). Runs once.",
     "set -u",
     `HERDR_WORKTREE=${q(env.HERDR_WORKTREE)}`,
     `HERDR_MAIN_WORKTREE=${q(env.HERDR_MAIN_WORKTREE)}`,

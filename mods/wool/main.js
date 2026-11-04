@@ -3,7 +3,7 @@
 // Runs as an invisible kept window (mod.json): it draws nothing and watches
 // spaces(). When a new space shows up for a linked worktree made in the last
 // few minutes, it claims it (bin/wool-claim.sh), runs the repo's setup steps
-// in a terminal, and lays out plain-shell spaces from .herdr/workspace.yml(.dist).
+// in a terminal, and lays out plain-shell spaces, both from .herdr/wool.yml(.dist).
 // All decisions live in lib/ (tested with node --test); this file is glue.
 
 import { View, div } from "gpui-kit";
@@ -104,20 +104,20 @@ export default class Wool extends View {
   async prepare(cx, space, kind, shellHint, wt) {
 
     const config = await loadConfig({ main: wt.main, worktree: wt.worktree }, (p) => readTextFile(p));
-    if (config.setup.error) {
-      // A broken setup file: no half setup, nothing else for this worktree.
-      this.configError(config.setup.error);
-      if (config.workspace.error) this.configError(config.workspace.error);
+    if (config.error) {
+      // A broken file: no half setup, nothing else for this worktree.
+      this.configError(config.error);
       return;
     }
-    if (config.workspace.error) this.configError(config.workspace.error);
+    const cfg = config.value;
+    if (cfg === null) return;
     // An empty setup list is nothing to run: no Setup tab, nothing waits.
-    const hasSetup = config.setup.value !== null && config.setup.value.steps.length > 0;
-    const layout = kind === "plain-shell" && config.workspace.value !== null;
+    const hasSetup = cfg.steps.length > 0;
+    const layout = kind === "plain-shell" && cfg.tabs !== null;
     if (!hasSetup && !layout) return;
 
     if (hasSetup) {
-      const script = setupScript(config.setup.value.steps, {
+      const script = setupScript(cfg.steps, {
         HERDR_WORKTREE: wt.worktree, HERDR_MAIN_WORKTREE: wt.main, HERDR_BRANCH: wt.branch,
       });
       const w = await exec("sh", ["-c", 'printf %s "$1" > "$2"', "sh", script, `${wt.stateDir}/setup.sh`]);
@@ -130,12 +130,12 @@ export default class Wool extends View {
       shell = r?.stdout.trim() || "/bin/sh";
     }
     const ctx = { binDir: this.binDir, stateDir: wt.stateDir, shell, agentArgv: null };
-    if (layout && config.workspace.value.tabs.some((t) => t.panes.some((p) => p.kind === "agent"))) {
+    if (layout && cfg.tabs.some((t) => t.panes.some((p) => p.kind === "agent"))) {
       // If Herdr can't list agents, agent panes become shells (with a warning).
       const known = await knownAgents().catch(() => []);
       ctx.agentArgv = (name) => pickAgent(known, name);
     }
-    const plan = layout ? planLayout(config.workspace.value, hasSetup, ctx) : planSetupOnly(hasSetup, ctx);
+    const plan = layout ? planLayout(cfg, hasSetup, ctx) : planSetupOnly(hasSetup, ctx);
     if (plan.warnings.length > 0) {
       notify({ title: `wool: ${wt.branch || tilde(wt.worktree)}`, body: plan.warnings.join("\n"), level: "warning" });
     }

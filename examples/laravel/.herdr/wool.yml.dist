@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/svenluijten/wool/main/schema/wool.schema.json
+version: 1
+
+setup:
+  - name: Copy .env
+    run: cp "$HERDR_MAIN_WORKTREE/.env" .env
+  - name: Install PHP dependencies
+    run: composer install --no-interaction
+  - name: Install JS dependencies
+    run: npm ci
+
+tabs:
+  - title: Agent
+    panes:
+      - agent: default
+  - title: Shell
+    panes:
+      - title: shell
+  - title: Server
+    panes:
+      - title: server
+        command: composer run dev
+        setup: true

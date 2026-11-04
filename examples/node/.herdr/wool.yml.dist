@@ -1,5 +1,10 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/svenluijten/wool/main/schema/workspace.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/svenluijten/wool/main/schema/wool.schema.json
 version: 1
+
+setup:
+  - name: Install dependencies
+    run: npm ci
+
 tabs:
   - title: Agent
     panes:

@@ -1,5 +1,5 @@
-// Validates the two config files after YAML parsing and normalises them into
-// the shapes the planner uses. Strict on purpose: an unknown field or a wrong
+// Validates .herdr/wool.yml(.dist) after YAML parsing and normalises it into
+// the shape the planner uses. Strict on purpose: an unknown field or a wrong
 // type is an error that names the field, never a guess.
 
 export class ConfigError extends Error {
@@ -10,10 +10,8 @@ export class ConfigError extends Error {
   }
 }
 
-export const SETUP_FIELDS = ["version", "worktrees"];
-export const WORKTREES_FIELDS = ["setup"];
+export const CONFIG_FIELDS = ["version", "env", "setup", "tabs", "background"];
 export const SETUP_STEP_FIELDS = ["name", "run", "env"];
-export const WORKSPACE_FIELDS = ["version", "env", "tabs", "background"];
 export const TAB_FIELDS = ["title", "panes"];
 export const PANE_FIELDS = ["title", "command", "agent", "prompt", "env", "split", "size", "setup", "waitForSetup", "focus"];
 export const BACKGROUND_FIELDS = ["command", "env", "waitForSetup"];
@@ -64,32 +62,39 @@ function checker(file) {
   return { fail, map, join, str, bool, env, version };
 }
 
-export function validateSetup(value, file) {
-  const c = checker(file);
-  c.map(value, "", SETUP_FIELDS);
-  c.version(value);
-  if (value.worktrees === undefined || value.worktrees === null) c.fail("", '"worktrees.setup" is required');
-  c.map(value.worktrees, "worktrees", WORKTREES_FIELDS);
-  const list = value.worktrees.setup;
-  if (!Array.isArray(list)) c.fail("worktrees", '"worktrees.setup" is required and must be a list');
-  const steps = list.map((s, i) => {
-    const path = `worktrees.setup[${i}]`;
+function validateSteps(c, list, topEnv) {
+  if (list === undefined || list === null) return [];
+  if (!Array.isArray(list)) c.fail("setup", "expected a list of steps");
+  return list.map((s, i) => {
+    const path = `setup[${i}]`;
     c.map(s, path, SETUP_STEP_FIELDS);
     if (s.run === undefined || s.run === null) c.fail(path, '"run" is required');
     return {
       name: c.str(s.name, `${path}.name`, { nonEmpty: true }),
       run: c.str(s.run, `${path}.run`, { required: true, nonEmpty: true }),
-      env: c.env(s.env, `${path}.env`),
+      env: { ...topEnv, ...c.env(s.env, `${path}.env`) },
     };
   });
-  return { steps };
 }
 
-export function validateWorkspace(value, file) {
+// Returns { env, steps, tabs, background }. tabs is null when the file has no
+// layout (setup only); steps is [] when it has no setup.
+export function validateConfig(value, file) {
   const c = checker(file);
-  c.map(value, "", WORKSPACE_FIELDS);
+  c.map(value, "", CONFIG_FIELDS);
   c.version(value);
+  const none = (v) => v === undefined || v === null;
+  if (none(value.setup) && none(value.tabs)) c.fail("", 'needs "setup", "tabs" or both');
   const env = c.env(value.env, "env");
+  const steps = validateSteps(c, value.setup, env);
+  if (none(value.tabs)) {
+    if (!none(value.background)) c.fail("background", 'needs "tabs" (background commands are part of the layout)');
+    return { env, steps, tabs: null, background: [] };
+  }
+  return { ...validateLayout(c, value, env), steps };
+}
+
+function validateLayout(c, value, env) {
   if (!Array.isArray(value.tabs) || value.tabs.length === 0) c.fail("tabs", "needs at least one tab");
   let setupAt = null;
   let focusAt = null;

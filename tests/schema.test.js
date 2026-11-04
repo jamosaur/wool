@@ -4,18 +4,15 @@ import { readFileSync } from "node:fs";
 import { parseYaml } from "../mods/wool/lib/yaml.js";
 import {
   ConfigError,
-  validateSetup,
-  validateWorkspace,
-  SETUP_FIELDS,
-  WORKTREES_FIELDS,
+  validateConfig,
+  CONFIG_FIELDS,
   SETUP_STEP_FIELDS,
-  WORKSPACE_FIELDS,
   TAB_FIELDS,
   PANE_FIELDS,
   BACKGROUND_FIELDS,
 } from "../mods/wool/lib/schema.js";
 
-const FILE = "/repo/.herdr/file.yml";
+const FILE = "/repo/.herdr/wool.yml";
 
 function rejects(fn, value, pattern) {
   assert.throws(() => fn(value, FILE), (e) => {
@@ -26,75 +23,95 @@ function rejects(fn, value, pattern) {
   });
 }
 
-const HERDR_DOG = parseYaml(`version: 1
-worktrees:
-  setup:
-    - run: cp "$HERDR_MAIN_WORKTREE/.env" .env
-    - name: Install dependencies
-      run: pnpm install
-    - name: Seed database
-      run: pnpm db:seed
-      env:
-        NODE_ENV: development
-`);
-
 const QUIZ = parseYaml(`version: 1
-tabs:
+
+setup:
+  - name: Copy .env
+    run: cp "$HERDR_MAIN_WORKTREE/.env" .env
+  - name: Install PHP dependencies
+    run: composer install --no-interaction
+  - name: Install JS dependencies
+    run: npm ci
+
+tabs: 
   - title: Agent
-    panes:
+    panes: 
       - agent: default
   - title: Shell
-    panes:
+    panes: 
       - title: shell
-  - title: Dev
-    panes:
-      - command: composer run dev
+  - title: Server
+    panes: 
+      - title: server
+        command: composer run dev
         setup: true
 `);
 
 const ws = (tabs, extra = {}) => ({ version: 1, tabs, ...extra });
 const one = (pane) => ws([{ panes: [pane] }]);
+const steps = (list, extra = {}) => ({ version: 1, setup: list, ...extra });
+
+// ---- whole file ----------------------------------------------------------
+
+test("config: the quiz example validates", () => {
+  const c = validateConfig(QUIZ, FILE);
+  assert.deepEqual(c.steps, [
+    { name: "Copy .env", run: 'cp "$HERDR_MAIN_WORKTREE/.env" .env', env: {} },
+    { name: "Install PHP dependencies", run: "composer install --no-interaction", env: {} },
+    { name: "Install JS dependencies", run: "npm ci", env: {} },
+  ]);
+  assert.deepEqual(c.tabs.map((t) => t.title), ["Agent", "Shell", "Server"]);
+  assert.equal(c.tabs[2].panes[0].title, "server");
+  assert.equal(c.tabs[2].panes[0].setup, true);
+});
+
+test("config: setup only has no tabs", () => {
+  const c = validateConfig(steps([{ run: "npm ci" }]), FILE);
+  assert.equal(c.tabs, null);
+  assert.deepEqual(c.background, []);
+  assert.equal(c.steps.length, 1);
+});
+
+test("config: tabs only has no steps", () => {
+  assert.deepEqual(validateConfig(one({}), FILE).steps, []);
+});
+
+test("config: rejects a file with neither setup nor tabs", () => rejects(validateConfig, { version: 1 }, /"setup".*"tabs"/));
+test("config: rejects background without tabs", () =>
+  rejects(validateConfig, steps([{ run: "x" }], { background: [{ command: "y" }] }), /background.*tabs/));
+test("config: rejects the old worktrees block", () =>
+  rejects(validateConfig, { version: 1, worktrees: { setup: [] } }, /unknown field "worktrees"/));
 
 // ---- setup -------------------------------------------------------------
 
-test("setup: the herdr-dog example validates", () => {
-  assert.deepEqual(validateSetup(HERDR_DOG, FILE), {
-    steps: [
-      { name: null, run: 'cp "$HERDR_MAIN_WORKTREE/.env" .env', env: {} },
-      { name: "Install dependencies", run: "pnpm install", env: {} },
-      { name: "Seed database", run: "pnpm db:seed", env: { NODE_ENV: "development" } },
-    ],
-  });
-});
-
 test("setup: an empty list is valid", () => {
-  assert.deepEqual(validateSetup({ version: 1, worktrees: { setup: [] } }, FILE), { steps: [] });
+  assert.deepEqual(validateConfig(steps([]), FILE).steps, []);
 });
 
 test("setup: env numbers and booleans become strings", () => {
-  const v = validateSetup({ version: 1, worktrees: { setup: [{ run: "x", env: { CI: 1, B: true } }] } }, FILE);
+  const v = validateConfig(steps([{ run: "x", env: { CI: 1, B: true } }]), FILE);
   assert.deepEqual(v.steps[0].env, { CI: "1", B: "true" });
 });
 
-test("setup: rejects a missing version", () => rejects(validateSetup, { worktrees: { setup: [] } }, /version/));
-test("setup: rejects version 2", () => rejects(validateSetup, { version: 2, worktrees: { setup: [] } }, /version.*1/));
-test("setup: rejects an empty file", () => rejects(validateSetup, null, /map/));
-test("setup: rejects a missing worktrees.setup", () => rejects(validateSetup, { version: 1, worktrees: {} }, /worktrees\.setup/));
-test("setup: rejects a step without run", () =>
-  rejects(validateSetup, { version: 1, worktrees: { setup: [{ name: "x" }] } }, /worktrees\.setup\[0\].*"run"/));
-test("setup: rejects an empty run", () =>
-  rejects(validateSetup, { version: 1, worktrees: { setup: [{ run: "" }] } }, /worktrees\.setup\[0\]\.run/));
-test("setup: rejects an unknown step field", () =>
-  rejects(validateSetup, { version: 1, worktrees: { setup: [{ run: "x", cwd: "y" }] } }, /unknown field "cwd"/));
-test("setup: rejects an unknown top-level field", () =>
-  rejects(validateSetup, { version: 1, worktrees: { setup: [] }, hooks: {} }, /unknown field "hooks"/));
-test("setup: rejects a list in env", () =>
-  rejects(validateSetup, { version: 1, worktrees: { setup: [{ run: "x", env: { A: [1] } }] } }, /env\.A/));
+test("setup: top-level env applies to steps, under each step's own", () => {
+  const v = validateConfig(steps([{ run: "x", env: { A: "step" } }, { run: "y" }], { env: { A: "top", B: "top" } }), FILE);
+  assert.deepEqual(v.steps.map((s) => s.env), [{ A: "step", B: "top" }, { A: "top", B: "top" }]);
+});
+
+test("setup: rejects a missing version", () => rejects(validateConfig, { setup: [] }, /version/));
+test("setup: rejects version 2", () => rejects(validateConfig, { version: 2, setup: [] }, /version.*1/));
+test("setup: rejects an empty file", () => rejects(validateConfig, null, /map/));
+test("setup: rejects a setup that isn't a list", () => rejects(validateConfig, steps({ run: "x" }), /setup.*list/));
+test("setup: rejects a step without run", () => rejects(validateConfig, steps([{ name: "x" }]), /setup\[0\].*"run"/));
+test("setup: rejects an empty run", () => rejects(validateConfig, steps([{ run: "" }]), /setup\[0\]\.run/));
+test("setup: rejects an unknown step field", () => rejects(validateConfig, steps([{ run: "x", cwd: "y" }]), /unknown field "cwd"/));
+test("setup: rejects an unknown top-level field", () => rejects(validateConfig, steps([], { hooks: {} }), /unknown field "hooks"/));
+test("setup: rejects a list in env", () => rejects(validateConfig, steps([{ run: "x", env: { A: [1] } }]), /env\.A/));
 
 // ---- workspace -----------------------------------------------------------
 
 test("workspace: the quiz example validates", () => {
-  const w = validateWorkspace(QUIZ, FILE);
+  const w = validateConfig(QUIZ, FILE);
   assert.equal(w.tabs.length, 3);
   assert.deepEqual(w.env, {});
   assert.deepEqual(w.background, []);
@@ -106,37 +123,36 @@ test("workspace: the quiz example validates", () => {
     }],
   });
   assert.equal(w.tabs[1].panes[0].kind, "shell");
-  assert.equal(w.tabs[1].panes[0].title, "shell");
   assert.deepEqual(
     { ...w.tabs[2].panes[0] },
-    { title: null, kind: "command", command: "composer run dev", agent: null, prompt: null, env: {},
+    { title: "server", kind: "command", command: "composer run dev", agent: null, prompt: null, env: {},
       split: null, size: null, setup: true, waitForSetup: true, focus: false },
   );
 });
 
 test("workspace: split names map to right and down", () => {
-  const w = validateWorkspace(ws([{ panes: [{}, { split: "vertical" }, { split: "horizontal" }, { split: "down" }, { split: "right" }] }]), FILE);
+  const w = validateConfig(ws([{ panes: [{}, { split: "vertical" }, { split: "horizontal" }, { split: "down" }, { split: "right" }] }]), FILE);
   assert.deepEqual(w.tabs[0].panes.map((p) => p.split), [null, "right", "down", "down", "right"]);
 });
 
 test("workspace: a later pane without split splits right", () => {
-  const w = validateWorkspace(ws([{ panes: [{}, {}] }]), FILE);
+  const w = validateConfig(ws([{ panes: [{}, {}] }]), FILE);
   assert.equal(w.tabs[0].panes[1].split, "right");
 });
 
 test("workspace: env values become strings and layout env is kept", () => {
-  const w = validateWorkspace(ws([{ panes: [{ command: "x", env: { PORT: 3000 } }] }], { env: { APP_ENV: "local" } }), FILE);
+  const w = validateConfig(ws([{ panes: [{ command: "x", env: { PORT: 3000 } }] }], { env: { APP_ENV: "local" } }), FILE);
   assert.deepEqual(w.env, { APP_ENV: "local" });
   assert.deepEqual(w.tabs[0].panes[0].env, { PORT: "3000" });
 });
 
 test("workspace: size is kept as given", () => {
-  const w = validateWorkspace(ws([{ panes: [{}, { size: "30%" }, { size: 0.3 }, { size: 40 }] }]), FILE);
+  const w = validateConfig(ws([{ panes: [{}, { size: "30%" }, { size: 0.3 }, { size: 40 }] }]), FILE);
   assert.deepEqual(w.tabs[0].panes.map((p) => p.size), [null, "30%", 0.3, 40]);
 });
 
 test("workspace: prompt, focus and background", () => {
-  const w = validateWorkspace(ws([{ panes: [{ agent: "claude", prompt: "hi", focus: true }] }], {
+  const w = validateConfig(ws([{ panes: [{ agent: "claude", prompt: "hi", focus: true }] }], {
     background: [{ command: "npm run watch", waitForSetup: true, env: { A: "b" } }, { command: "redis-server" }],
   }), FILE);
   const p = w.tabs[0].panes[0];
@@ -149,30 +165,29 @@ test("workspace: prompt, focus and background", () => {
 });
 
 test("workspace: rejects command with agent", () =>
-  rejects(validateWorkspace, ws([{ panes: [{}] }, { panes: [{}] }, { panes: [{ command: "x", agent: "default" }] }]),
+  rejects(validateConfig, ws([{ panes: [{}] }, { panes: [{}] }, { panes: [{ command: "x", agent: "default" }] }]),
     /tabs\[2\]\.panes\[0\]: "command" and "agent" can't both be set/));
 test("workspace: rejects two setup panes across tabs", () =>
-  rejects(validateWorkspace, ws([{ panes: [{ command: "a", setup: true }] }, { panes: [{ command: "b", setup: true }] }]),
+  rejects(validateConfig, ws([{ panes: [{ command: "a", setup: true }] }, { panes: [{ command: "b", setup: true }] }]),
     /tabs\[1\]\.panes\[0\].*setup/));
-test("workspace: rejects prompt without agent", () => rejects(validateWorkspace, one({ prompt: "hi" }), /"prompt" needs "agent"/));
-test("workspace: rejects split on a tab's first pane", () => rejects(validateWorkspace, one({ split: "down" }), /tabs\[0\]\.panes\[0\].*split/));
-test("workspace: rejects an unknown split", () => rejects(validateWorkspace, ws([{ panes: [{}, { split: "left" }] }]), /split/));
-test("workspace: rejects no tabs", () => rejects(validateWorkspace, ws([]), /tabs/));
-test("workspace: rejects a missing tabs", () => rejects(validateWorkspace, { version: 1 }, /tabs/));
-test("workspace: rejects no panes", () => rejects(validateWorkspace, ws([{ panes: [] }]), /tabs\[0\]\.panes/));
+test("workspace: rejects prompt without agent", () => rejects(validateConfig, one({ prompt: "hi" }), /"prompt" needs "agent"/));
+test("workspace: rejects split on a tab's first pane", () => rejects(validateConfig, one({ split: "down" }), /tabs\[0\]\.panes\[0\].*split/));
+test("workspace: rejects an unknown split", () => rejects(validateConfig, ws([{ panes: [{}, { split: "left" }] }]), /split/));
+test("workspace: rejects no tabs", () => rejects(validateConfig, ws([]), /tabs/));
+test("workspace: rejects no panes", () => rejects(validateConfig, ws([{ panes: [] }]), /tabs\[0\]\.panes/));
 test("workspace: rejects two focus panes", () =>
-  rejects(validateWorkspace, ws([{ panes: [{ focus: true }] }, { panes: [{ focus: true }] }]), /focus/));
-test("workspace: rejects setup on an agent pane", () => rejects(validateWorkspace, one({ agent: "default", setup: true }), /setup/));
-test("workspace: rejects an unknown pane field", () => rejects(validateWorkspace, one({ cwd: "x" }), /tabs\[0\]\.panes\[0\]: unknown field "cwd"/));
-test("workspace: rejects waitForSetup on a shell pane", () => rejects(validateWorkspace, one({ waitForSetup: true }), /waitForSetup/));
-test("workspace: rejects waitForSetup on an agent pane", () => rejects(validateWorkspace, one({ agent: "default", waitForSetup: true }), /waitForSetup/));
-test("workspace: rejects a non-boolean setup", () => rejects(validateWorkspace, one({ command: "x", setup: "yes" }), /setup.*true or false/));
-test("workspace: rejects a bad size", () => rejects(validateWorkspace, ws([{ panes: [{}, { size: "big" }] }]), /size/));
-test("workspace: rejects version 2", () => rejects(validateWorkspace, { version: 2, tabs: [{ panes: [{}] }] }, /version/));
+  rejects(validateConfig, ws([{ panes: [{ focus: true }] }, { panes: [{ focus: true }] }]), /focus/));
+test("workspace: rejects setup on an agent pane", () => rejects(validateConfig, one({ agent: "default", setup: true }), /setup/));
+test("workspace: rejects an unknown pane field", () => rejects(validateConfig, one({ cwd: "x" }), /tabs\[0\]\.panes\[0\]: unknown field "cwd"/));
+test("workspace: rejects waitForSetup on a shell pane", () => rejects(validateConfig, one({ waitForSetup: true }), /waitForSetup/));
+test("workspace: rejects waitForSetup on an agent pane", () => rejects(validateConfig, one({ agent: "default", waitForSetup: true }), /waitForSetup/));
+test("workspace: rejects a non-boolean setup", () => rejects(validateConfig, one({ command: "x", setup: "yes" }), /setup.*true or false/));
+test("workspace: rejects a bad size", () => rejects(validateConfig, ws([{ panes: [{}, { size: "big" }] }]), /size/));
+test("workspace: rejects version 2", () => rejects(validateConfig, { version: 2, tabs: [{ panes: [{}] }] }, /version/));
 test("workspace: rejects a background entry without command", () =>
-  rejects(validateWorkspace, ws([{ panes: [{}] }], { background: [{ env: {} }] }), /background\[0\].*"command"/));
+  rejects(validateConfig, ws([{ panes: [{}] }], { background: [{ env: {} }] }), /background\[0\].*"command"/));
 test("workspace: rejects an unknown top-level field", () =>
-  rejects(validateWorkspace, ws([{ panes: [{}] }], { layouts: [] }), /unknown field "layouts"/));
+  rejects(validateConfig, ws([{ panes: [{}] }], { layouts: [] }), /unknown field "layouts"/));
 
 // ---- JSON schemas ----------------------------------------------------------
 
@@ -181,18 +196,14 @@ test("json schemas list the same fields as the validators", () => {
   const keys = (o) => Object.keys(o.properties).sort();
   const sorted = (a) => [...a].sort();
 
-  const wt = load("worktrees.schema.json");
-  assert.deepEqual(keys(wt), sorted(SETUP_FIELDS));
-  assert.deepEqual(keys(wt.properties.worktrees), sorted(WORKTREES_FIELDS));
-  assert.deepEqual(keys(wt.properties.worktrees.properties.setup.items), sorted(SETUP_STEP_FIELDS));
-
-  const w = load("workspace.schema.json");
-  assert.deepEqual(keys(w), sorted(WORKSPACE_FIELDS));
+  const w = load("wool.schema.json");
+  assert.deepEqual(keys(w), sorted(CONFIG_FIELDS));
+  assert.deepEqual(keys(w.properties.setup.items), sorted(SETUP_STEP_FIELDS));
   assert.deepEqual(keys(w.properties.tabs.items), sorted(TAB_FIELDS));
   assert.deepEqual(keys(w.properties.tabs.items.properties.panes.items), sorted(PANE_FIELDS));
   assert.deepEqual(keys(w.properties.background.items), sorted(BACKGROUND_FIELDS));
 
-  for (const s of [wt, w]) {
+  for (const s of [w]) {
     const walk = (o) => {
       if (o && typeof o === "object") {
         if (o.type === "object" && o.properties) assert.equal(o.additionalProperties, false);

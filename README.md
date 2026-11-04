@@ -50,25 +50,21 @@ Good to know:
 
 ## Quick start
 
-In your repo, add `.herdr/worktrees.yml.dist` and `.herdr/workspace.yml.dist`
-(this is [`examples/laravel`](examples/laravel/.herdr)):
+In your repo, add `.herdr/wool.yml.dist` (this is
+[`examples/laravel`](examples/laravel/.herdr/wool.yml.dist)):
 
 ```yaml
-# .herdr/worktrees.yml.dist
+# .herdr/wool.yml.dist
 version: 1
-worktrees:
-  setup:
-    - name: Copy .env
-      run: cp "$HERDR_MAIN_WORKTREE/.env" .env
-    - name: Install PHP dependencies
-      run: composer install --no-interaction
-    - name: Install JS dependencies
-      run: npm ci
-```
 
-```yaml
-# .herdr/workspace.yml.dist
-version: 1
+setup:
+  - name: Copy .env
+    run: cp "$HERDR_MAIN_WORKTREE/.env" .env
+  - name: Install PHP dependencies
+    run: composer install --no-interaction
+  - name: Install JS dependencies
+    run: npm ci
+
 tabs:
   - title: Agent
     panes:
@@ -76,88 +72,62 @@ tabs:
   - title: Shell
     panes:
       - title: shell
-  - title: Dev
+  - title: Server
     panes:
-      - command: composer run dev
+      - title: server
+        command: composer run dev
         setup: true
 ```
 
-Commit them. Now **New worktree** (the space menu or the + menu) gives a space
-with three tabs: your agent (focused, ready to type into), a shell, and Dev,
-which shows `composer install` and `npm ci` scrolling by and then becomes
-`composer run dev`. A notification says "wool: &lt;branch&gt; is ready".
+Commit it. Now **New worktree** (the space menu or the + menu) gives a space
+with three tabs: your agent (focused, ready to type into), a shell, and
+Server, which shows `composer install` and `npm ci` scrolling by and then
+becomes `composer run dev`. A notification says "wool: &lt;branch&gt; is ready".
 
 ## Configuration
 
-Four files, all in the repo's `.herdr/` folder:
+One file in the repo's `.herdr/` folder:
 
-| Purpose | Committed (shared) | Personal override (gitignored) |
-|---|---|---|
-| Setup steps | `.herdr/worktrees.yml.dist` | `.herdr/worktrees.yml` |
-| Workspace layout | `.herdr/workspace.yml.dist` | `.herdr/workspace.yml` |
+| Committed (shared) | Personal override (gitignored) |
+|---|---|
+| `.herdr/wool.yml.dist` | `.herdr/wool.yml` |
 
-- A plain `.yml` **replaces its `.dist` entirely**. Nothing is merged.
-- The two pairs are independent: setup without a workspace file is fine, and
-  so is the reverse. With neither, wool does nothing for that repo.
+- A plain `wool.yml` **replaces the `.dist` entirely**. Nothing is merged.
+- `setup` and `tabs` are both optional, but the file needs at least one:
+  setup without tabs is fine (it runs in an added "Setup" tab), and so is the
+  reverse. With no file, wool does nothing for that repo.
 - Add `.herdr/*.yml` to your `.gitignore` so personal files stay personal.
 
-### Where the files are read from
+### Where the file is read from
 
-Each pair is looked up on its own, first match wins:
+First match wins:
 
-1. `<main checkout>/.herdr/<name>.yml` (your personal file; gitignored, so it
+1. `<main checkout>/.herdr/wool.yml` (your personal file; gitignored, so it
    normally only exists in the main checkout)
-2. `<new worktree>/.herdr/<name>.yml`
-3. `<new worktree>/.herdr/<name>.yml.dist` (so a branch that changes its
+2. `<new worktree>/.herdr/wool.yml`
+3. `<new worktree>/.herdr/wool.yml.dist` (so a branch that changes its
    `.dist` gets its own version, and your main checkout's uncommitted edits
    don't leak in)
-4. `<main checkout>/.herdr/<name>.yml.dist`
+4. `<main checkout>/.herdr/wool.yml.dist`
 
-This differs from herdr-dog, which reads the new checkout's `.yml` first.
-Since `.yml` files are gitignored, a new checkout never has one, so wool looks
-in the main checkout for it.
+### Fields
 
-### Setup file: `.herdr/worktrees.yml(.dist)`
-
-The same schema as [herdr-dog](https://github.com/nickspaargaren/herdr-dog)'s
-`.herdr/worktrees.yml`, so a repo's setup works with the Herdr TUI plugin and
-with wool. (If you use both, your personal `.herdr/worktrees.yml` applies to
-both. That's intended.)
-
-```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/svenluijten/wool/main/schema/worktrees.schema.json
-version: 1
-worktrees:
-  setup:
-    - run: cp "$HERDR_MAIN_WORKTREE/.env" .env
-    - name: Install JS dependencies
-      run: npm ci
-      env:
-        CI: "1"
-```
-
-| Field | Required | Meaning |
-|---|---|---|
-| `version` | yes | `1` |
-| `worktrees.setup` | yes | The steps, in order. `[]` is valid (nothing to do). |
-| `setup[].run` | yes | Run as `/bin/sh -c <run>` in the new worktree. |
-| `setup[].name` | no | The label shown while it runs (default: the command). |
-| `setup[].env` | no | Extra environment variables for this step. |
-
-The first step that exits nonzero stops setup.
-
-### Workspace file: `.herdr/workspace.yml(.dist)`
-
-One layout in the vocabulary of
+The layout uses the vocabulary of
 [razajamil/herdr-plugin-workspace-manager](https://github.com/razajamil/herdr-plugin-workspace-manager)
 (one of its `layouts[]` entries, without `id`: the repo decides which layout
 applies). Fields wool adds are marked *wool*.
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/svenluijten/wool/main/schema/workspace.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/svenluijten/wool/main/schema/wool.schema.json
 version: 1
 env:
   APP_ENV: local
+setup:
+  - run: cp "$HERDR_MAIN_WORKTREE/.env" .env
+  - name: Install JS dependencies
+    run: npm ci
+    env:
+      CI: "1"
 tabs:
   - title: Agent
     panes:
@@ -177,9 +147,13 @@ background:
 
 | Field | Meaning |
 |---|---|
-| `version` | *wool.* `1`, required. |
-| `env` | Environment for every pane, under each pane's own `env`. |
-| `tabs[]` | The tabs, in order (at least one). |
+| `version` | `1`, required. |
+| `env` | Environment for every setup step, pane and background command, under their own `env`. |
+| `setup[]` | The setup steps, in order. The first step that exits nonzero stops setup. `[]` is valid (nothing to do). |
+| `setup[].run` | Required. Run as `/bin/sh -c <run>` in the new worktree. |
+| `setup[].name` | The label shown while it runs (default: the command). |
+| `setup[].env` | Extra environment variables for this step. |
+| `tabs[]` | The layout for a space that arrives as a plain shell: the tabs, in order (at least one). Leave it out for setup only. |
 | `tabs[].title` | The tab's name (default: its number). |
 | `tabs[].panes[]` | The panes (at least one). The first is the tab; each later one splits from the one before it. |
 | `panes[].command` | A command, run with `sh -c` inside your login shell (so your `PATH`, not your aliases or shell functions). The shell stays when it exits, so a crash leaves its output on screen. |
@@ -187,22 +161,22 @@ background:
 | `panes[].prompt` | The agent's first message. Needs `agent`, and only works on a tab's first pane (a split can't be given one). |
 | `panes[].env` | This pane's environment, over the top-level `env`. |
 | `panes[].split` | `right` or `down` (also `vertical` = right, `horizontal` = down). Not on a tab's first pane. Default `right`. |
-| `panes[].setup` | `true` on at most one pane: it shows setup's output, then runs its own `command` once setup succeeded (with no command it stays a shell). Not on an agent pane. |
+| `panes[].setup` | `true` on at most one pane: it shows setup's output, then runs its own `command` once setup succeeded (with no command it stays a shell). Not on an agent pane. Without one, setup runs in an added "Setup" tab. |
 | `panes[].waitForSetup` | *wool.* The `command` waits for setup and doesn't run if setup fails. |
 | `panes[].focus` | *wool.* The pane with the keyboard when the space opens (one at most). Default: the first agent pane, else the first pane. |
 | `panes[].title`, `panes[].size` | Accepted for compatibility, **ignored**: Herdr panes have no settable title, and its split command takes no size. |
-| `background[]` | *wool.* Commands with no pane: `command`, optional `env` and `waitForSetup`. Output goes to `<worktree git dir>/wool/bg-<n>.log`, the pid to `bg-<n>.pid` (kill it to stop the command), the exit code to `bg-<n>.exit`. A nonzero exit posts a notification while wool keeps running; after a reload or an app restart wool stops watching, but the files stay. Background commands keep running after `git worktree remove`: stop them first. |
+| `background[]` | *wool.* Commands with no pane (needs `tabs`): `command`, optional `env` and `waitForSetup`. Output goes to `<worktree git dir>/wool/bg-<n>.log`, the pid to `bg-<n>.pid` (kill it to stop the command), the exit code to `bg-<n>.exit`. A nonzero exit posts a notification while wool keeps running; after a reload or an app restart wool stops watching, but the files stay. Background commands keep running after `git worktree remove`: stop them first. |
 
 A pane with neither `command` nor `agent` is a plain shell. Unknown fields,
 `command` with `agent`, two `setup: true` panes, or `prompt` without `agent` are
 errors.
 
-Both files have JSON schemas in [`schema/`](schema) for editors; add the
-`# yaml-language-server: $schema=…` line shown above.
+The file has a JSON schema, [`schema/wool.schema.json`](schema/wool.schema.json),
+for editors; add the `# yaml-language-server: $schema=…` line shown above.
 
 ### YAML
 
-wool reads the YAML these files need (maps, lists, strings, numbers,
+wool reads the YAML this file needs (maps, lists, strings, numbers,
 `true`/`false`, comments, `[]`, `{}`) and rejects the rest with a line number:
 tab indentation, `|`/`>` block scalars, anchors and aliases, flow lists with
 items, more than one document. Quote a value that contains `: ` or ` #`.
@@ -216,10 +190,10 @@ checkout or an old worktree you open again.
 
 | A new space for a fresh worktree… | Setup | Layout |
 |---|---|---|
-| arriving as one tab with a plain shell (New worktree, Open worktree) | yes | yes, from the workspace file |
+| arriving as one tab with a plain shell (New worktree, Open worktree) | yes | yes, from `tabs` |
 | arriving any other way (a briefed agent from a script, the worktree mod's `{branch, tab, argv}` form) | yes, in an added "Setup" tab that doesn't take focus | no: wool never closes, replaces or reorders tabs, and never starts a second agent |
 
-With no workspace file, setup runs in an added "Setup" tab that doesn't take
+With no `tabs`, setup runs in an added "Setup" tab that doesn't take
 focus. Remote spaces (on another machine) are skipped in this version.
 
 A worktree you make with `git worktree add` in a terminal and then open with
@@ -238,7 +212,7 @@ Every setup step gets:
 ## Examples
 
 - [`examples/laravel`](examples/laravel/.herdr): `.env` from main,
-  `composer install`, `npm ci`; Agent, Shell, Dev (`composer run dev`).
+  `composer install`, `npm ci`; Agent, Shell, Server (`composer run dev`).
 - [`examples/node`](examples/node/.herdr): `npm ci`; Agent, Shell, Dev
   (`npm run dev`).
 - [`examples/setup-only`](examples/setup-only/.herdr): setup only; the space
@@ -254,10 +228,9 @@ Every setup step gets:
   running step is stopped, setup counts as failed (`interrupted`), and waiting
   commands give up. Quitting the Herdr app doesn't interrupt setup: terminals
   keep running in herdr-core, but the ready/failed notification is skipped.
-- **A config file is broken:** a notification names the file and the problem
-  (with the line for YAML errors). If the setup file is broken, wool does
-  nothing else for that worktree. If only the workspace file is broken, setup
-  still runs, in a Setup tab.
+- **The config file is broken:** a notification names the file and the
+  problem (with the line for YAML errors), and wool does nothing else for
+  that worktree.
 - **No installed agent:** agent panes become plain shells, with a warning.
 
 wool keeps its per-worktree state in the worktree's private git dir
@@ -273,25 +246,26 @@ also updates `status`, so waiting commands follow it), in any terminal:
 
 ## Security and trust
 
-**A repo's `.herdr/*.dist` files run commands as you** when you create a
+**A repo's `.herdr/wool.yml.dist` runs commands as you** when you create a
 worktree, with your environment and permissions. That's the same trust you
-give herdr-dog, `composer` scripts or npm `postinstall`: only use wool with
+give `composer` scripts or npm `postinstall`: only use wool with
 repos whose committed files you trust, and read `.herdr/` in a repo before
 making worktrees of it.
 
-wool itself runs programs (`git`, `sh`, the setup steps, the commands in the
-workspace file) and reads files outside its own folder (`.herdr/` files in
+wool itself runs programs (`git`, `sh`, the setup steps, the commands in
+`wool.yml`) and reads files outside its own folder (`.herdr/` files in
 your repos, its state in their git dirs). It doesn't use the network.
 
 ## Relationship to herdr-dog and the workspace manager
 
 - [herdr-dog](https://github.com/nickspaargaren/herdr-dog) runs
-  `.herdr/worktrees.yml` for the Herdr **TUI**. wool reads the same schema
-  for the Herdr **app**, adds committed `.dist` files, and lays out the space.
+  `.herdr/worktrees.yml` setup steps for the Herdr **TUI**. wool does the
+  same job for the Herdr **app**, with its own file: the same step fields
+  (`name`, `run`, `env`), but under a top-level `setup:` instead of
+  `worktrees.setup`, next to the layout.
 - [razajamil/herdr-plugin-workspace-manager](https://github.com/razajamil/herdr-plugin-workspace-manager)
   lays out TUI workspaces from a global config. wool borrows its layout
-  vocabulary, reads the layout from the repo, and keeps setup in the
-  herdr-dog file instead of a `setup:` block.
+  vocabulary and reads the layout from the repo.
 
 ## Development
 

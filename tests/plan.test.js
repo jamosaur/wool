@@ -5,12 +5,12 @@ import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { planLayout, planSetupOnly, keepShell } from "../mods/wool/lib/plan.js";
-import { validateWorkspace } from "../mods/wool/lib/schema.js";
+import { validateConfig } from "../mods/wool/lib/schema.js";
 import { parseYaml } from "../mods/wool/lib/yaml.js";
 import { runArgv, waitArgv, bgArgv } from "../mods/wool/lib/shell.js";
 
 const ctx = { binDir: "/mods/wool/bin", stateDir: "/repo/.git/worktrees/x/wool", agentArgv: ["claude"], shell: "/bin/zsh" };
-const W = (yaml) => validateWorkspace(parseYaml(yaml), "/f");
+const W = (yaml) => validateConfig(parseYaml(yaml), "/f");
 const ops = (steps) => steps.map((s) => s.op);
 
 const QUIZ = W(`version: 1

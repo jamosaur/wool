@@ -1,11 +1,11 @@
 # wool
 
 Make a new git worktree and its space is ready to work in: your agent opens at
-once with the keyboard, a shell tab sits next to it, and a Dev tab shows the
+once with the keyboard, a shell tab sits next to it, and a Server tab shows the
 repo's setup (`.env` copied, dependencies installed) scrolling by before it
 becomes the dev server. What runs and which tabs appear come from
-`.herdr/worktrees.yml.dist` and `.herdr/workspace.yml.dist` committed in the
-repo, with personal `.yml` overrides. wool itself never shows.
+`.herdr/wool.yml.dist` committed in the repo (top-level `setup` steps and
+`tabs`), with a personal `wool.yml` override. wool itself never shows.
 
 ![wool](preview.png)
 
@@ -14,7 +14,7 @@ repo, with personal `.yml` overrides. wool itself never shows.
 - **Nothing of wool itself.** It runs as a frameless, kept window overlay that
   renders an empty `div()`: no size, no frame, no clicks.
 - **A laid-out space**, when a new worktree arrives as a single plain shell:
-  exactly the tabs the workspace file lists, in order, named by their
+  exactly the tabs the file's `tabs` lists, in order, named by their
   `title`, with splits `right`/`down`. The space's original shell tab is
   closed. The first agent pane (or the `focus: true` one) has the keyboard.
 - **Setup output in a terminal**: the pane marked `setup: true` (or an added
@@ -39,9 +39,9 @@ repo, with personal `.yml` overrides. wool itself never shows.
   terminal's argv is a bare shell (`["/bin/zsh", "-l"]`). Until `terminals()`
   reports that argv (about 80 ms after the pane), the space is pending; after
   10 s without it, it counts as not plain.
-- Plain-shell space + workspace file → layout + setup. Any other new worktree
+- Plain-shell space + `tabs` → layout + setup. Any other new worktree
   space → setup only, in an added `Setup` tab; focus goes back to the pane
-  that had it. No setup file and no layout → nothing.
+  that had it. No `setup` and no layout → nothing.
 - Setup runs once. Ctrl-C in its pane or closing its terminal stops the
   running step (the whole process tree) and marks it failed (`interrupted`).
 - The space's original shell tab is closed only if its shell is still idle
@@ -68,8 +68,8 @@ repo, with personal `.yml` overrides. wool itself never shows.
   (`run()` returns nothing).
 - `mods/wool/lib/` (pure, `node --test`): `yaml.js` (strict YAML subset),
   `schema.js` (validation + normalisation), `config.js` (lookup order:
-  main `.yml`, worktree `.yml`, worktree `.yml.dist`, main `.yml.dist`, per
-  pair), `detect.js` (classification, claim parsing), `shell.js` (setup script,
+  main `wool.yml`, worktree `wool.yml`, worktree `wool.yml.dist`, main
+  `wool.yml.dist`), `detect.js` (classification, claim parsing), `shell.js` (setup script,
   argv builders), `plan.js` (steps: `tab`, `split`, `background`,
   `closeOriginal`, `focus`).
 - `mods/wool/bin/` (POSIX `sh`): `wool-claim.sh` (`mkdir <git-dir>/wool` as an
@@ -112,17 +112,17 @@ repo, with personal `.yml` overrides. wool itself never shows.
 
 1. `herdr-app check ~/.config/herdr-app/mods/wool` passes and `npm test` passes.
 2. With the Laravel example in a repo, New worktree gives tabs Agent (focused,
-   agent running), Shell, Dev; Dev shows the `.env` copy, `composer install`,
+   agent running), Shell, Server; Server shows the `.env` copy, `composer install`,
    `npm ci`, then `composer run dev`; the worktree's `.env` equals main's.
 3. Text typed into the agent arrives while setup is still running.
-4. A setup step `exit 1` stops setup; the error stays in Dev; `composer run dev`
+4. A setup step `exit 1` stops setup; the error stays in Server; `composer run dev`
    doesn't start; an error notification names the step.
 5. Saving `main.js` (in a real folder) adds no tabs and runs no setup in
    existing worktree spaces; neither does restarting the app.
 6. Opening an old worktree (Open worktree) changes nothing.
 7. `git worktree add` + `herdr-app do space.new --folder <wt> --argv '["claude"]' --task "…"`
    gives the briefed agent's tab (still focused) plus an unfocused `Setup` tab, and nothing else.
-8. A personal `.herdr/workspace.yml` with only a Shell tab (and `setup: []`)
+8. A personal `.herdr/wool.yml` with only a Shell tab (and no `setup`)
    gives only a Shell tab.
-9. A repo with no `.herdr/` files gets nothing; a broken file gives an error
+9. A repo with no `.herdr/` files gets nothing; a broken `wool.yml` gives an error
    notification naming it.
