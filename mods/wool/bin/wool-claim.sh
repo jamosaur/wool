@@ -4,7 +4,7 @@
 #   not-linked                                   not a linked git worktree
 #   stale                                        made more than [fresh-minutes] (3) ago
 #   taken                                        wool already handled it (or is handling it)
-#   claimed<TAB><git-dir><TAB><main-root><TAB><branch>
+#   claimed<TAB><git-dir><TAB><main-root><TAB><branch><TAB><worktree-root>
 # The claim is mkdir "<git-dir>/wool": atomic, so two copies of wool (two
 # windows, or a reload mid-setup) can never both claim one worktree.
 set -u
@@ -38,4 +38,5 @@ case $common in
   *) main=$(git worktree list --porcelain | sed -n '1s/^worktree //p') ;;
 esac
 branch=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
-printf 'claimed\t%s\t%s\t%s\n' "$gitdir" "$main" "$branch"
+top=$(git rev-parse --show-toplevel)
+printf 'claimed\t%s\t%s\t%s\t%s\n' "$gitdir" "$main" "$branch" "$top"

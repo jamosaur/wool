@@ -33,3 +33,11 @@ export function classifySpace(space, panes, terminals, firstSeenAt, now) {
 export function newSpaces(known, spaces) {
   return spaces.filter((s) => !known.has(s.id));
 }
+
+// Reads wool-claim.sh's output; null unless this copy of wool claimed it.
+export function parseClaim(stdout) {
+  const line = String(stdout).replace(/\r?\n$/, "");
+  const [word, gitDir, main, branch, worktree] = line.split("\t");
+  if (word !== "claimed" || !gitDir || !main || !worktree) return null;
+  return { gitDir, stateDir: `${gitDir}/wool`, main, branch: branch ?? "", worktree };
+}

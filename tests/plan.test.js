@@ -159,6 +159,14 @@ test("no installed agent: agent pane becomes a shell and warns", () => {
   assert.deepEqual(warnings, ["No installed agent found; the Agent tab is a plain shell."]);
 });
 
+test("agentArgv can be a function of the pane's agent name", () => {
+  const ws = W("version: 1\ntabs:\n  - panes:\n      - agent: default\n  - panes:\n      - agent: codex\n  - panes:\n      - agent: nope\n");
+  const argvs = { default: ["claude"], codex: ["codex", "--yolo"] };
+  const { steps, warnings } = planLayout(ws, false, { ...ctx, agentArgv: (name) => argvs[name] ?? null });
+  assert.deepEqual(steps.slice(0, 3).map((s) => s.argv), [["claude"], ["codex", "--yolo"], null]);
+  assert.deepEqual(warnings, ['No installed agent "nope" found; its pane is a plain shell.']);
+});
+
 test("focus: an explicit focus pane wins", () => {
   const ws = W("version: 1\ntabs:\n  - panes:\n      - agent: default\n  - panes:\n      - title: s\n      - command: x\n        focus: true\n");
   assert.deepEqual(planLayout(ws, false, ctx).steps.at(-1), { op: "focus", ref: "t1p1" });
@@ -204,4 +212,18 @@ test("planSetupOnly with and without setup", () => {
     warnings: [],
   });
   assert.deepEqual(planSetupOnly(false, ctx), { steps: [], warnings: [] });
+});
+
+test("pickAgent: default is the first installed, a name must match an installed key", async () => {
+  const { pickAgent } = await import("../mods/wool/lib/plan.js");
+  const known = [
+    { key: "codex", run: ["codex"], installed: false },
+    { key: "claude", run: ["claude"], installed: true },
+    { key: "pi", run: ["pi", "--x"], installed: true },
+  ];
+  assert.deepEqual(pickAgent(known, "default"), ["claude"]);
+  assert.deepEqual(pickAgent(known, "pi"), ["pi", "--x"]);
+  assert.equal(pickAgent(known, "codex"), null);
+  assert.equal(pickAgent(known, "nope"), null);
+  assert.equal(pickAgent([], "default"), null);
 });

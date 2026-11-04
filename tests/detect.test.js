@@ -107,7 +107,7 @@ test("wool-claim: claims a fresh linked worktree once", () => {
   const wt = join(root, "wt b");
   git(main, "worktree", "add", "-q", "-b", "b", wt);
   const gitdir = git(wt, "rev-parse", "--path-format=absolute", "--git-dir");
-  assert.equal(claim(wt), `claimed\t${gitdir}\t${main}\tb`);
+  assert.equal(claim(wt), `claimed\t${gitdir}\t${main}\tb\t${wt}`);
   assert.ok(statSync(join(gitdir, "wool")).isDirectory());
   assert.equal(claim(wt), "taken");
 });
@@ -149,5 +149,18 @@ test("wool-claim: a subfolder of a worktree claims the worktree", () => {
   const wt = join(root, "sub");
   git(main, "worktree", "add", "-q", "-b", "sub", wt);
   mkdirSync(join(wt, "src"));
-  assert.match(claim(join(wt, "src")), /^claimed\t/);
+  const out = claim(join(wt, "src")).split("\t");
+  assert.equal(out[0], "claimed");
+  assert.equal(out[4], wt);
+});
+
+test("parseClaim reads a claimed line and ignores the rest", async () => {
+  const { parseClaim } = await import("../mods/wool/lib/detect.js");
+  assert.deepEqual(parseClaim("claimed\t/m/.git/worktrees/b\t/m\tfeat/x\t/wt/b\n"), {
+    gitDir: "/m/.git/worktrees/b", stateDir: "/m/.git/worktrees/b/wool", main: "/m", branch: "feat/x", worktree: "/wt/b",
+  });
+  assert.equal(parseClaim("taken\n"), null);
+  assert.equal(parseClaim("stale"), null);
+  assert.equal(parseClaim("not-linked"), null);
+  assert.equal(parseClaim(""), null);
 });

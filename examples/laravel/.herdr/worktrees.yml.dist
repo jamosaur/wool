@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/svenluijten/wool/main/schema/worktrees.schema.json
+version: 1
+worktrees:
+  setup:
+    - name: Copy .env
+      run: cp "$HERDR_MAIN_WORKTREE/.env" .env
+    - name: Install PHP dependencies
+      run: composer install --no-interaction
+    - name: Install JS dependencies
+      run: npm ci

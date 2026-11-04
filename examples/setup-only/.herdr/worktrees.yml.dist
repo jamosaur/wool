@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/svenluijten/wool/main/schema/worktrees.schema.json
+# Setup only: no workspace file, so wool runs these in an added "Setup" tab
+# and leaves the space's tabs as they are.
+version: 1
+worktrees:
+  setup:
+    - name: Copy .env
+      run: cp "$HERDR_MAIN_WORKTREE/.env" .env
+    - name: Install dependencies
+      run: npm ci

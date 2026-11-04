@@ -6,6 +6,11 @@ import { runArgv, waitArgv, bgArgv, withEnv } from "./shell.js";
 
 const POSIX_SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 const NO_AGENT = "No installed agent found; the Agent tab is a plain shell.";
+const noNamedAgent = (name) => `No installed agent "${name}" found; its pane is a plain shell.`;
+
+// ctx.agentArgv: one argv for every agent pane, or a function of the pane's
+// agent name ("default" or a key such as "codex") returning argv or null.
+const agentFor = (ctx, name) => (typeof ctx.agentArgv === "function" ? ctx.agentArgv(name) : ctx.agentArgv) ?? null;
 
 // pane.split {argv} runs argv bare and closes the pane when it exits, so a
 // split's command is wrapped the way Herdr wraps tab.new's: run it, then the shell.
@@ -19,7 +24,7 @@ const setupTab = (ctx) => ({ op: "tab", ref: "setup", name: "Setup", argv: runAr
 
 function paneArgv(pane, hasSetup, ctx) {
   if (pane.kind === "shell") return pane.setup && hasSetup ? runArgv(ctx.binDir, ctx.stateDir, null) : null;
-  if (pane.kind === "agent") return ctx.agentArgv;
+  if (pane.kind === "agent") return agentFor(ctx, pane.agent);
   if (pane.setup && hasSetup) return runArgv(ctx.binDir, ctx.stateDir, pane.command);
   if (pane.waitForSetup && hasSetup) return waitArgv(ctx.binDir, ctx.stateDir, pane.command);
   return ["sh", "-c", pane.command];
@@ -37,13 +42,14 @@ export function planLayout(ws, hasSetup, ctx) {
   ws.tabs.forEach((tab, ti) => {
     tab.panes.forEach((pane, pi) => {
       const ref = `t${ti}p${pi}`;
-      if (pane.kind === "agent" && ctx.agentArgv === null) warn(NO_AGENT);
+      const agentArgv = pane.kind === "agent" ? agentFor(ctx, pane.agent) : null;
+      if (pane.kind === "agent" && agentArgv === null) warn(pane.agent === "default" ? NO_AGENT : noNamedAgent(pane.agent));
       const env = { ...ws.env, ...pane.env };
       const hasEnv = Object.keys(env).length > 0;
       let argv = paneArgv(pane, hasSetup, ctx);
       const isShell = argv === null;
       if (hasEnv) argv = withEnv(argv ?? [ctx.shell, "-l"], env);
-      const agentRuns = pane.kind === "agent" && ctx.agentArgv !== null;
+      const agentRuns = agentArgv !== null;
 
       if (pi === 0) {
         steps.push({ op: "tab", ref, name: tab.title, argv, task: agentRuns ? pane.prompt : null });
@@ -72,4 +78,11 @@ export function planLayout(ws, hasSetup, ctx) {
 
 export function planSetupOnly(hasSetup, ctx) {
   return { steps: hasSetup ? [setupTab(ctx)] : [], warnings: [] };
+}
+
+// knownAgents() is most-picked first: "default" is the first installed one;
+// any other name must be an installed entry's key.
+export function pickAgent(known, name) {
+  const hit = name === "default" ? known.find((a) => a.installed) : known.find((a) => a.key === name && a.installed);
+  return hit ? hit.run : null;
 }

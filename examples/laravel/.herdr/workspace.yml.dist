@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/svenluijten/wool/main/schema/workspace.schema.json
+version: 1
+tabs:
+  - title: Agent
+    panes:
+      - agent: default
+  - title: Shell
+    panes:
+      - title: shell
+  - title: Dev
+    panes:
+      - command: composer run dev
+        setup: true
