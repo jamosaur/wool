@@ -174,6 +174,7 @@ test("wool-bg records exit code and log", () => {
   assert.equal(r.status, 0);
   assert.equal(readFileSync(join(dir, "bg-2.exit"), "utf8").trim(), "4");
   assert.match(readFileSync(join(dir, "bg-2.log"), "utf8"), /out[\s\S]*err/);
+  assert.match(readFileSync(join(dir, "bg-2.pid"), "utf8"), /^\d+\n$/);
 });
 
 test("wool-bg --wait skips the command when setup failed", () => {
@@ -212,4 +213,22 @@ test("scripts are valid POSIX sh", () => {
     const r = run(["sh", "-n", join(BIN, f)]);
     assert.equal(r.status, 0, `${f}: ${r.stderr}`);
   }
+});
+
+test("wool-run interrupted with Ctrl-C stops the running step too", async () => {
+  // A step whose sh ignores INT (as a background job's children do) must still
+  // stop: wool-run signals the whole tree, not just setup.sh.
+  const { dir, worktree } = state([{ name: "slow", run: "trap '' INT; sleep 2; touch marker", env: {} }]);
+  const argv = runArgv(BIN, dir, null);
+  const child = spawn(argv[0], argv.slice(1), { stdio: ["ignore", "pipe", "pipe"], detached: true });
+  let out = "";
+  child.stdout.on("data", (d) => (out += d));
+  await waitFor(() => status(dir) === "running");
+  await sleep(400);
+  process.kill(-child.pid, "SIGINT");
+  await new Promise((r) => child.on("exit", r));
+  assert.equal(status(dir), "failed interrupted");
+  await sleep(2500);
+  assert.ok(!existsSync(join(worktree, "marker")), "the step kept running after Ctrl-C");
+  assert.match(out, /setup interrupted/);
 });

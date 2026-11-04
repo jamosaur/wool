@@ -182,7 +182,7 @@ background:
 | `tabs[]` | The tabs, in order (at least one). |
 | `tabs[].title` | The tab's name (default: its number). |
 | `tabs[].panes[]` | The panes (at least one). The first is the tab; each later one splits from the one before it. |
-| `panes[].command` | A command, run in your shell. The shell stays when it exits, so a crash leaves its output on screen. |
+| `panes[].command` | A command, run with `sh -c` inside your login shell (so your `PATH`, not your aliases or shell functions). The shell stays when it exits, so a crash leaves its output on screen. |
 | `panes[].agent` | An agent instead of a command. `default` (*wool*): your most-picked installed agent, from Herdr's `knownAgents()`. Or an agent's key (`claude`, `codex`, …) for personal files. Shared files never need to name one. |
 | `panes[].prompt` | The agent's first message. Needs `agent`, and only works on a tab's first pane (a split can't be given one). |
 | `panes[].env` | This pane's environment, over the top-level `env`. |
@@ -191,7 +191,7 @@ background:
 | `panes[].waitForSetup` | *wool.* The `command` waits for setup and doesn't run if setup fails. |
 | `panes[].focus` | *wool.* The pane with the keyboard when the space opens (one at most). Default: the first agent pane, else the first pane. |
 | `panes[].title`, `panes[].size` | Accepted for compatibility, **ignored**: Herdr panes have no settable title, and its split command takes no size. |
-| `background[]` | *wool.* Commands with no pane: `command`, optional `env` and `waitForSetup`. Output goes to `<worktree git dir>/wool/bg-<n>.log`; a nonzero exit posts a notification. |
+| `background[]` | *wool.* Commands with no pane: `command`, optional `env` and `waitForSetup`. Output goes to `<worktree git dir>/wool/bg-<n>.log`, the pid to `bg-<n>.pid` (kill it to stop the command), the exit code to `bg-<n>.exit`. A nonzero exit posts a notification while wool keeps running; after a reload or an app restart wool stops watching, but the files stay. Background commands keep running after `git worktree remove`: stop them first. |
 
 A pane with neither `command` nor `agent` is a plain shell. Unknown fields,
 `command` with `agent`, two `setup: true` panes, or `prompt` without `agent` are
@@ -250,8 +250,10 @@ Every setup step gets:
   `wool: step '<name>' failed (exit N)` stay on screen, nothing waiting on
   setup starts, and a notification says which step failed (click it to go to
   the setup pane).
-- **The setup terminal is closed mid-setup:** it counts as failed
-  (`interrupted`); waiting commands give up.
+- **Setup is interrupted** (Ctrl-C in its pane, or its terminal closed): the
+  running step is stopped, setup counts as failed (`interrupted`), and waiting
+  commands give up. Quitting the Herdr app doesn't interrupt setup: terminals
+  keep running in herdr-core, but the ready/failed notification is skipped.
 - **A config file is broken:** a notification names the file and the problem
   (with the line for YAML errors). If the setup file is broken, wool does
   nothing else for that worktree. If only the workspace file is broken, setup
@@ -261,8 +263,13 @@ Every setup step gets:
 wool keeps its per-worktree state in the worktree's private git dir
 (`<repo>/.git/worktrees/<name>/wool/`): the claim, `setup.sh`, `status`,
 background logs. It never shows in `git status` and goes away with
-`git worktree remove`. Setup runs once per worktree: to run it again, run
-`sh <that folder>/setup.sh` in the worktree.
+`git worktree remove`. Setup runs once per worktree. To run it again (this
+also updates `status`, so waiting commands follow it), in any terminal:
+`sh ~/.config/herdr-app/mods/wool/bin/wool-run.sh <that folder>`.
+- **Something goes wrong after wool claimed the worktree** (before setup
+  started): a notification says what, and gives that same command.
+- **You typed into the new space's shell before wool laid it out:** if
+  something is running there, wool keeps that tab and says so.
 
 ## Security and trust
 

@@ -14,10 +14,22 @@ write_status() {
   printf '%s\n' "$1" > "$status.tmp" && mv -f "$status.tmp" "$status"
 }
 
+# Stops a process and everything it started, children first. A background
+# job's children ignore INT, so Ctrl-C alone would leave the step running.
+kill_tree() {
+  for kid in $(ps -A -o pid= -o ppid= | awk -v p="$1" '$2 == p { print $1 }'); do
+    kill_tree "$kid"
+  done
+  kill -TERM "$1" 2>/dev/null
+}
+
 child=
 finish() {
-  if [ -n "$child" ]; then kill -HUP "$child" 2>/dev/null; fi
-  if [ "$(head -n 1 "$status" 2>/dev/null)" = running ]; then write_status "failed interrupted"; fi
+  if [ -n "$child" ]; then kill_tree "$child"; child=; fi
+  if [ "$(head -n 1 "$status" 2>/dev/null)" = running ]; then
+    write_status "failed interrupted"
+    printf '\nwool: setup interrupted; nothing that waits for it will start.\n'
+  fi
 }
 trap finish EXIT
 trap 'finish; trap - EXIT; exit 129' HUP

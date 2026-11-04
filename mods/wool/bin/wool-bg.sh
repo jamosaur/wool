@@ -2,7 +2,8 @@
 # wool-bg.sh <stateDir> <n> [--wait] -- command...
 # Runs a background command (no pane) with its output in <stateDir>/bg-<n>.log
 # and its exit code in <stateDir>/bg-<n>.exit ("skipped" when it waited for a
-# setup that failed).
+# setup that failed). The command's pid is in <stateDir>/bg-<n>.pid: kill it
+# to stop it.
 set -u
 
 state=$1
@@ -15,11 +16,14 @@ log="$state/bg-$n.log"
 here=$(dirname "$0")
 
 if [ "$wait" -eq 1 ]; then
-  sh "$here/wool-wait.sh" "$state" -- "$@" > "$log" 2>&1
-  code=$?
-  if [ "$(head -n 1 "$state/status" 2>/dev/null)" != ok ]; then code=skipped; fi
+  # wool-wait execs the command, so this pid becomes the command's.
+  sh "$here/wool-wait.sh" "$state" -- "$@" > "$log" 2>&1 &
 else
-  "$@" > "$log" 2>&1
-  code=$?
+  "$@" > "$log" 2>&1 &
 fi
+pid=$!
+printf '%s\n' "$pid" > "$state/bg-$n.pid"
+wait "$pid"
+code=$?
+if [ "$wait" -eq 1 ] && [ "$(head -n 1 "$state/status" 2>/dev/null)" != ok ]; then code=skipped; fi
 printf '%s\n' "$code" > "$state/bg-$n.exit"

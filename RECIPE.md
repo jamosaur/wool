@@ -42,7 +42,11 @@ repo, with personal `.yml` overrides. wool itself never shows.
 - Plain-shell space + workspace file → layout + setup. Any other new worktree
   space → setup only, in an added `Setup` tab; focus goes back to the pane
   that had it. No setup file and no layout → nothing.
-- Setup runs once. Closing its terminal marks it failed (`interrupted`).
+- Setup runs once. Ctrl-C in its pane or closing its terminal stops the
+  running step (the whole process tree) and marks it failed (`interrupted`).
+- The space's original shell tab is closed only if its shell is still idle
+  (terminal `foreground` is the shell itself); otherwise it stays and an info
+  notification says so.
 - Keys: none. Hovers and clicks: none (only the toast's click action).
 
 ## Built from
@@ -71,10 +75,11 @@ repo, with personal `.yml` overrides. wool itself never shows.
 - `mods/wool/bin/` (POSIX `sh`): `wool-claim.sh` (`mkdir <git-dir>/wool` as an
   atomic claim; prints `claimed<TAB>git-dir<TAB>main<TAB>branch<TAB>top`),
   `wool-run.sh` (runs `setup.sh`, writes `status`: `running` → `ok` /
-  `failed <step>`, traps HUP/INT/TERM, then `exec`s the pane command),
+  `failed <step>`, traps HUP/INT/TERM and stops the step's process tree, then
+  `exec`s the pane command),
   `wool-wait.sh` (polls `status` once a second; gives up on `failed`, a dead
   runner pid, or no status for 10 s), `wool-bg.sh` (background command to
-  `bg-<n>.log`/`bg-<n>.exit`).
+  `bg-<n>.log`/`bg-<n>.pid`/`bg-<n>.exit`).
 - No shipped mods are changed. Programs run: `git`, `sh`, `find`, `nohup`, and
   the repo's commands.
 

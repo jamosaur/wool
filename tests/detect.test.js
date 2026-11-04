@@ -164,3 +164,16 @@ test("parseClaim reads a claimed line and ignores the rest", async () => {
   assert.equal(parseClaim("not-linked"), null);
   assert.equal(parseClaim(""), null);
 });
+
+test("originalIsIdle: close the original tab only while its shell runs nothing", async () => {
+  const { originalIsIdle } = await import("../mods/wool/lib/detect.js");
+  const idle = { argv: ["/bin/zsh", "-l"], foreground: { argv: ["/bin/zsh", "-l"] } };
+  assert.equal(originalIsIdle(pane(), idle), true);
+  assert.equal(originalIsIdle(pane(), { ...idle, foreground: { argv: ["claude"] } }), false);
+  assert.equal(originalIsIdle(pane(), { ...idle, foreground: { argv: ["git", "pull"] } }), false);
+  assert.equal(originalIsIdle(pane({ status: "working", program: { key: "claude", shell: false } }), idle), false);
+  assert.equal(originalIsIdle(pane({ program: { key: "nvim", shell: false } }), { argv: ["/bin/zsh", "-l"] }), false);
+  assert.equal(originalIsIdle(pane(), { argv: ["/bin/zsh", "-l"] }), true);
+  assert.equal(originalIsIdle(undefined, idle), false);
+  assert.equal(originalIsIdle(pane(), undefined), false);
+});

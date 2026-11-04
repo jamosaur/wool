@@ -41,3 +41,17 @@ export function parseClaim(stdout) {
   if (word !== "claimed" || !gitDir || !main || !worktree) return null;
   return { gitDir, stateDir: `${gitDir}/wool`, main, branch: branch ?? "", worktree };
 }
+
+// Before closing the space's original shell tab: is that shell still idle?
+// If the person already started something in it (an agent, git pull), the
+// tab stays. `terminal` is its terminals() entry; `foreground` is what runs now.
+export function originalIsIdle(pane, terminal) {
+  if (!pane || !terminal) return false;
+  if (pane.status !== null && pane.status !== undefined) return false;
+  if (pane.program && pane.program.shell !== true) return false;
+  if (!isPlainShellArgv(terminal.argv)) return false;
+  const now = terminal.foreground?.argv;
+  if (!now) return true;
+  const base = (p) => String(p).split("/").pop().replace(/^-/, "");
+  return isPlainShellArgv(now) && base(now[0]) === base(terminal.argv[0]);
+}

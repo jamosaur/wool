@@ -11,14 +11,13 @@ import {
   spaces, panes, terminals, focused, machines, run, exec, notify, knownAgents, readTextFile, appHome, home,
 } from "herdr";
 import { loadConfig } from "./lib/config.js";
-import { classifySpace, newSpaces, parseClaim, FRESH_MINUTES, PENDING_LIMIT_MS } from "./lib/detect.js";
+import { classifySpace, newSpaces, parseClaim, originalIsIdle, FRESH_MINUTES, PENDING_LIMIT_MS } from "./lib/detect.js";
 import { setupScript } from "./lib/shell.js";
 import { planLayout, planSetupOnly, pickAgent } from "./lib/plan.js";
 
 const STEP_TIMEOUT_MS = 5000;
 const STATUS_POLL_MS = 2000;
 const BG_POLL_MS = 5000;
-const BG_WATCH_MS = 30 * 60 * 1000;
 
 const tilde = (p) => (p && p.startsWith(home()) ? "~" + p.slice(home().length) : p);
 const localReady = () => (machines().find((m) => m.name === null)?.layout ?? "ready") !== "loading";
@@ -90,6 +89,19 @@ export default class Wool extends View {
     }
     const wt = parseClaim(claimed.stdout);
     if (!wt) return; // not a linked worktree, made a while ago, or already handled
+    try {
+      await this.prepare(cx, space, kind, shellHint, wt);
+    } catch (e) {
+      // The claim is taken, so nothing will retry by itself: say how.
+      notify({
+        title: `wool: setting up ${wt.branch || tilde(wt.worktree)} stopped`,
+        body: `${e?.message ?? e}\nTo run setup by hand: sh "${this.binDir}/wool-run.sh" "${wt.stateDir}"`,
+        level: "error",
+      });
+    }
+  }
+
+  async prepare(cx, space, kind, shellHint, wt) {
 
     const config = await loadConfig({ main: wt.main, worktree: wt.worktree }, (p) => readTextFile(p));
     if (config.setup.error) {
@@ -114,12 +126,13 @@ export default class Wool extends View {
 
     let shell = shellHint;
     if (!shell) {
-      const r = await exec("sh", ["-c", 'printf %s "${SHELL:-/bin/sh}"']);
-      shell = r.stdout.trim() || "/bin/sh";
+      const r = await exec("sh", ["-c", 'printf %s "${SHELL:-/bin/sh}"']).catch(() => null);
+      shell = r?.stdout.trim() || "/bin/sh";
     }
     const ctx = { binDir: this.binDir, stateDir: wt.stateDir, shell, agentArgv: null };
     if (layout && config.workspace.value.tabs.some((t) => t.panes.some((p) => p.kind === "agent"))) {
-      const known = await knownAgents();
+      // If Herdr can't list agents, agent panes become shells (with a warning).
+      const known = await knownAgents().catch(() => []);
       ctx.agentArgv = (name) => pickAgent(known, name);
     }
     const plan = layout ? planLayout(config.workspace.value, hasSetup, ctx) : planSetupOnly(hasSetup, ctx);
@@ -179,7 +192,12 @@ export default class Wool extends View {
         const r = await exec("sh", ["-c", 'nohup "$@" >/dev/null 2>&1 &', "sh", ...step.argv], { cwd: wt.worktree });
         if (r.code !== 0) notify({ title: "wool: a background command didn't start", body: step.argv.join(" "), level: "error" });
       } else if (step.op === "closeOriginal") {
-        if (originalTab) run("tab.close", { id: originalTab, confirmed: true });
+        // Only while its shell is still idle: the person may have started
+        // something in it while wool was getting ready.
+        const p = panes().find((x) => x.tab === originalTab);
+        const t = p && terminals().find((x) => x.address === p.terminal);
+        if (originalTab && originalIsIdle(p, t)) run("tab.close", { id: originalTab, confirmed: true });
+        else if (originalTab) notify({ title: "wool: kept your first tab", body: "Something is running in it, so wool left it open.", level: "info" });
       } else if (step.op === "focus") {
         const target = refs.get(step.ref);
         if (!personElsewhere && target) {
@@ -236,7 +254,9 @@ export default class Wool extends View {
   async watchBackground(cx, wt, count) {
     const done = new Set();
     const name = wt.branch || tilde(wt.worktree);
-    for (let waited = 0; waited < BG_WATCH_MS && done.size < count; waited += BG_POLL_MS) {
+    // Watched until each command exits (a reload or restart stops watching;
+    // bg-<n>.exit and bg-<n>.log stay in the state folder).
+    while (done.size < count) {
       await cx.sleep(BG_POLL_MS);
       for (let n = 0; n < count; n++) {
         if (done.has(n)) continue;
