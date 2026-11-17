@@ -51,6 +51,7 @@ All files are under `mods/wool/`.
   - `detect.js`: decides what a newly seen space is.
   - `plan.js`: plans the tab layout.
   - `shell.js`: generates the setup and teardown scripts.
+  - `names.js`: works out `HERDR_BRANCH_SLUG` from the branch.
   - `trust.js`: reads the output of the trust check.
 - `bin/` holds the POSIX `sh` scripts that run in terminals or in the
   background:
@@ -61,6 +62,8 @@ All files are under `mods/wool/`.
   - `wool-trust.sh`: wool's trust gate for config files.
   - `wool-records.sh`: lists the teardown records of a repo.
   - `wool-teardown.sh`: runs teardown steps once the worktree is gone.
+  - `helpers/`: commands put on `PATH` for setup and teardown steps
+    (`wool-port`). They must stay executable.
 - `mod.json` tells Herdr to run wool as an invisible window.
 
 Tests are in `tests/`, one file per `lib/` module plus `main.test.js` and

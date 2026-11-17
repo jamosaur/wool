@@ -5,9 +5,11 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, realpa
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { shellQuote, setupScript, teardownScript, runArgv, waitArgv, bgArgv, headlessRunArgv, withEnv } from "../mods/wool/lib/shell.js";
+import { shellQuote, setupScript, teardownScript, teardownArgv, label, runArgv, waitArgv, bgArgv, headlessRunArgv, withEnv } from "../mods/wool/lib/shell.js";
+import { branchSlug } from "../mods/wool/lib/names.js";
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), "..", "mods", "wool", "bin");
+const HELPERS = join(BIN, "helpers");
 const tmp = (name = "wool test ") => mkdtempSync(join(tmpdir(), name));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -363,4 +365,66 @@ test("wool-run interrupted with Ctrl-C stops the running step too", async () => 
   await sleep(2500);
   assert.ok(!existsSync(join(worktree, "marker")), "the step kept running after Ctrl-C");
   assert.match(out, /setup interrupted/);
+});
+
+test("setup script exports the branch slug and puts the helpers on PATH", () => {
+  const worktree = tmp("wt ");
+  const dir = tmp("state ");
+  writeFileSync(join(dir, "setup.sh"), setupScript(
+    [{ name: "names", run: 'printf "%s|%s|%s" "$HERDR_BRANCH_SLUG" "$(wool-port)" "$(wool-port vite)" > names.txt', env: {} }],
+    { HERDR_WORKTREE: worktree, HERDR_MAIN_WORKTREE: "/main", HERDR_BRANCH: "feat/x" },
+    HELPERS,
+  ));
+  const r = run(["sh", join(dir, "setup.sh")]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const [slug, app, vite] = readFileSync(join(worktree, "names.txt"), "utf8").split("|");
+  assert.equal(slug, branchSlug("feat/x"));
+  assert.notEqual(app, vite);
+});
+
+test("without a helpers folder, the script leaves PATH alone", () => {
+  const script = setupScript([], { HERDR_WORKTREE: "/w", HERDR_MAIN_WORKTREE: "/m", HERDR_BRANCH: "b" });
+  assert.doesNotMatch(script, /PATH=/);
+});
+
+const port = (branch, ...args) => run([join(HELPERS, "wool-port"), ...args], { env: { ...process.env, HERDR_BRANCH: branch } });
+
+test("wool-port gives a stable port from 10000 to 19999 per branch and name", () => {
+  const seen = new Set();
+  for (const b of ["main", "feat/x", "feat/y", "it's $x"]) {
+    for (const name of [[], ["vite"], ["pgsql"]]) {
+      const a = port(b, ...name);
+      assert.equal(a.status, 0, a.stderr);
+      const n = Number(a.stdout.trim());
+      assert.ok(n >= 10000 && n <= 19999, a.stdout);
+      assert.equal(port(b, ...name).stdout, a.stdout);
+      seen.add(n);
+    }
+  }
+  assert.ok(seen.size > 6, "ports spread out");
+});
+
+test("wool-port fails without a branch", () => {
+  const r = port("");
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /detached/);
+});
+
+test("a multi-line run runs every line; its label is the first line", () => {
+  const { dir, worktree } = state([{ name: null, run: "\n  echo one > one.txt\necho two > two.txt\n", env: {} }]);
+  const r = run(["sh", join(dir, "setup.sh")]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(existsSync(join(worktree, "one.txt")) && existsSync(join(worktree, "two.txt")));
+  assert.match(r.stdout, /==> echo one > one.txt …\n/);
+});
+
+test("label", () => {
+  assert.equal(label({ name: "Install", run: "x" }), "Install");
+  assert.equal(label({ name: null, run: "npm ci" }), "npm ci");
+  assert.equal(label({ name: null, run: "a\nb\n" }), "a …");
+  assert.equal(label({ name: "Ports\n", run: "a\nb" }), "Ports");
+});
+
+test("teardownArgv", () => {
+  assert.deepEqual(teardownArgv("/bin dir", "/rec"), ["sh", "/bin dir/wool-teardown.sh", "/rec"]);
 });

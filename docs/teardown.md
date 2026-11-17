@@ -12,10 +12,10 @@ when it fails. The config file itself is described in
 ```yaml
 setup:
   - name: Create test database
-    run: createdb "app_$(printf %s "$HERDR_BRANCH" | tr -c 'a-zA-Z0-9' _)"
+    run: createdb "app_$HERDR_BRANCH_SLUG"
 teardown:
   - name: Drop test database
-    run: dropdb --if-exists "app_$(printf %s "$HERDR_BRANCH" | tr -c 'a-zA-Z0-9' _)"
+    run: dropdb --if-exists "app_$HERDR_BRANCH_SLUG"
 ```
 
 `teardown` steps have the same fields as `setup` steps and run in order. The
@@ -38,13 +38,32 @@ worktree still exists.
 ## Where it runs
 
 Teardown runs in the repo's main checkout, in the background. Nothing is shown
-in a terminal.
+in a terminal. It runs through your interactive login shell, like setup in
+the background, so it finds the tools your shell's `PATH` has (Docker,
+Homebrew, nvm, …).
 
 The worktree's files are gone by then, so a step can't read the worktree's
 `.env` or any other file in it. To find resources that setup created, work out
-their names from `HERDR_BRANCH` in both setup and teardown, as the example
-does. Teardown steps get the same variables as setup steps; see
+their names from the branch in both setup and teardown, as the example does
+with `HERDR_BRANCH_SLUG`. Teardown steps get the same variables and helper
+commands as setup steps; see
 [Environment variables](configuration.md#environment-variables).
+
+For example, a worktree that runs its own Docker Compose project can't run
+`docker compose down` from its own folder any more. Name the project after the
+branch in setup, and stop it by name from the main checkout:
+
+```yaml
+setup:
+  - name: Start containers
+    run: docker compose -p "app-$HERDR_BRANCH_SLUG" up -d --wait
+teardown:
+  - name: Stop containers and drop their volumes
+    run: docker compose -p "app-$HERDR_BRANCH_SLUG" down --volumes --remove-orphans
+```
+
+That runs with the main checkout's compose file, so the volume names match
+as long as the worktree used the same one.
 
 ## Which steps run
 

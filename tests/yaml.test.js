@@ -98,9 +98,61 @@ test("rejects aliases", () => rejects("a: *x\n", 1));
 test("rejects anchors", () => rejects("a: &x 1\n", 1));
 test("rejects merge keys", () => rejects("a:\n  <<: *x\n", 2));
 test("rejects a second document", () => rejects("a: 1\n---\nb: 2\n", 2));
-test("rejects block scalars", () => rejects("run: |\n  echo hi\n", 1));
 test("rejects flow lists with content", () => rejects("a: [a, b]\n", 1));
 test("rejects flow maps with content", () => rejects("a: {b: 1}\n", 1));
 test("rejects inconsistent indentation", () => rejects("a:\n    b: 1\n  c: 2\n", 3));
 test("rejects an unterminated quote", () => rejects('a: "x\n', 1));
 test("rejects text after a closing quote", () => rejects('a: "x" y\n', 1));
+
+test("literal block scalars keep lines, comments, blank lines and tabs", () => {
+  const text = `setup:
+  - name: Ports
+    run: |
+      # claim ports
+      a=1
+
+      printf '%s\\t%s' "$a" b
+    env:
+      X: "1"
+  - run: echo next
+`;
+  assert.deepEqual(parseYaml(text), {
+    setup: [
+      { name: "Ports", run: "# claim ports\na=1\n\nprintf '%s\\t%s' \"$a\" b\n", env: { X: "1" } },
+      { run: "echo next" },
+    ],
+  });
+  assert.deepEqual(parseYaml("a: |\n  x\n  \ty\nb: 2\n"), { a: "x\n\ty\n", b: 2 });
+});
+
+test("block scalars as list items and nested deeper", () => {
+  assert.deepEqual(parseYaml("- |\n  one\n  two\n- three\n"), ["one\ntwo\n", "three"]);
+  assert.deepEqual(parseYaml("a:\n  - b: >\n      x\n      y\n    c: 1\n"), { a: [{ b: "x y\n", c: 1 }] });
+  assert.deepEqual(parseYaml("a: |\n      deep\n        deeper\nb: 1\n"), { a: "deep\n  deeper\n", b: 1 });
+});
+
+test("block scalar chomping", () => {
+  assert.deepEqual(parseYaml("a: |\n  x\n\n\nb: 1\n"), { a: "x\n", b: 1 });
+  assert.deepEqual(parseYaml("a: |-\n  x\n\nb: 1\n"), { a: "x", b: 1 });
+  assert.deepEqual(parseYaml("a: |+\n  x\n\n\nb: 1\n"), { a: "x\n\n\n", b: 1 });
+  assert.deepEqual(parseYaml("a: >-\n  x\n  y\n"), { a: "x y" });
+  assert.deepEqual(parseYaml("a: | # a comment\n  x\n"), { a: "x\n" });
+});
+
+test("folded block scalars", () => {
+  assert.deepEqual(parseYaml("a: >\n  one\n  two\n\n  three\n    code\n  four\n"), { a: "one two\nthree\n  code\nfour\n" });
+});
+
+test("an empty block scalar", () => {
+  assert.deepEqual(parseYaml("a: |\nb: 1\n"), { a: "", b: 1 });
+});
+
+test("a block scalar's text must be indented past its key", () => {
+  rejects("a:\n  b: |\n  x\n", 3, /expected/);
+  rejects("a: |\n    x\n  y\n", 3, /indented less/);
+});
+test("rejects block scalar indentation indicators", () => rejects("run: |2\n  echo hi\n", 1, /indentation indicator/));
+test("rejects unknown block scalar headers", () => rejects("run: |x\n  echo hi\n", 1, /block scalar/));
+test("quoted pipes aren't block scalars", () => {
+  assert.deepEqual(parseYaml('a: "|"\nb: \'>\'\n'), { a: "|", b: ">" });
+});

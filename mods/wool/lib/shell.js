@@ -1,21 +1,32 @@
 // Builds the setup script and the argv arrays wool hands to Herdr. The long
 // work happens in a terminal through bin/*.sh, never in exec (30 s limit).
 
+import { branchSlug } from "./names.js";
+
 export function shellQuote(s) {
   return "'" + String(s).replace(/'/g, "'\\''") + "'";
 }
 
-const label = (step) => step.name ?? step.run;
-
-export function setupScript(steps, env) {
-  return stepsScript(steps, env, "HERDR_WORKTREE");
+// One line per step on screen and in failed-step: a multi-line command shows
+// its first line.
+export function label(step) {
+  const lines = String(step.name ?? step.run).split("\n").map((l) => l.trim()).filter(Boolean);
+  return lines.length > 1 ? `${lines[0]} …` : (lines[0] ?? "");
 }
 
-export function teardownScript(steps, env) {
-  return stepsScript(steps, env, "HERDR_MAIN_WORKTREE");
+// env: HERDR_WORKTREE, HERDR_MAIN_WORKTREE, HERDR_BRANCH. helpers: a folder
+// to put first on PATH (wool-port), or null.
+export function setupScript(steps, env, helpers = null) {
+  return stepsScript(steps, env, helpers, "HERDR_WORKTREE");
 }
 
-function stepsScript(steps, env, dirVar) {
+export function teardownScript(steps, env, helpers = null) {
+  return stepsScript(steps, env, helpers, "HERDR_MAIN_WORKTREE");
+}
+
+// Everything is written as values, not worked out when the script runs, so a
+// teardown sees exactly what its setup saw.
+function stepsScript(steps, env, helpers, dirVar) {
   const q = shellQuote;
   const lines = [
     "#!/bin/sh",
@@ -24,7 +35,9 @@ function stepsScript(steps, env, dirVar) {
     `HERDR_WORKTREE=${q(env.HERDR_WORKTREE)}`,
     `HERDR_MAIN_WORKTREE=${q(env.HERDR_MAIN_WORKTREE)}`,
     `HERDR_BRANCH=${q(env.HERDR_BRANCH)}`,
-    "export HERDR_WORKTREE HERDR_MAIN_WORKTREE HERDR_BRANCH",
+    `HERDR_BRANCH_SLUG=${q(branchSlug(env.HERDR_BRANCH))}`,
+    "export HERDR_WORKTREE HERDR_MAIN_WORKTREE HERDR_BRANCH HERDR_BRANCH_SLUG",
+    ...(helpers ? [`PATH=${q(helpers)}:$PATH`, "export PATH"] : []),
     `cd "$${dirVar}" || { echo "wool: can't enter $${dirVar}"; exit 1; }`,
     "wool_step() {",
     "  wool_label=$1; shift",
@@ -52,6 +65,10 @@ const viaSh = (command) => ["sh", "-c", command];
 export function runArgv(binDir, stateDir, command) {
   const argv = ["sh", `${binDir}/wool-run.sh`, stateDir];
   return command === null || command === undefined ? argv : [...argv, "--", ...viaSh(command)];
+}
+
+export function teardownArgv(binDir, record) {
+  return ["sh", `${binDir}/wool-teardown.sh`, record];
 }
 
 // No terminal: output goes to <stateDir>/setup.log and the steps get no stdin.

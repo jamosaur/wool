@@ -1,7 +1,8 @@
 // A strict reader for the small part of YAML that wool's config files use:
-// block maps, block lists, plain and quoted scalars, booleans, numbers, null,
-// comments, and the empty flow collections `[]` and `{}`. Anything else is
-// rejected with a line number rather than guessed at.
+// block maps, block lists, plain and quoted scalars, literal (|) and folded
+// (>) block scalars, booleans, numbers, null, comments, and the empty flow
+// collections `[]` and `{}`. Anything else is rejected with a line number
+// rather than guessed at.
 
 export class YamlError extends Error {
   constructor(message, line) {
@@ -13,6 +14,8 @@ export class YamlError extends Error {
 }
 
 const KEY = /^([^\s"'#&*!|>\[\]{},?:%@`-][^:]*?|-[^\s:][^:]*?)[ ]*:(?=\s|$)/;
+// A block scalar header: | or >, an optional chomping indicator, a comment.
+const BLOCK_HEADER = /^([|>])([-+]?)(?:\s+#.*)?$/;
 
 export function parseYaml(text) {
   const lines = tokenize(String(text));
@@ -49,9 +52,102 @@ function tokenize(text) {
       continue;
     }
     if (lead === "" && /^\.\.\.(\s|$)/.test(rest)) throw new YamlError("document end markers (...) aren't supported", line);
-    out.push({ indent: lead.length, text: rest.replace(/\s+$/, ""), line });
+    const token = { indent: lead.length, text: rest.replace(/\s+$/, ""), line };
+    const header = blockHeader(token.text, line);
+    if (header) {
+      // The lines that follow are the scalar's text, not YAML: comments,
+      // blank lines and tabs in them are kept.
+      const block = readBlockScalar(raw, n + 1, lead.length + header.column, header);
+      token.block = block.value;
+      n = block.next - 1;
+    }
+    out.push(token);
   }
   return out;
+}
+
+// Finds a block scalar header that ends a "key:", "- " or "- key:" line and
+// returns the column of the node that owns it (the text must be indented past
+// it), the style and the chomping indicator.
+function blockHeader(text, line) {
+  let column = 0;
+  let owner = 0;
+  let rest = text;
+  while (isListItem(rest)) {
+    const content = rest.slice(1).trimStart();
+    owner = column;
+    column += rest.length - content.length;
+    rest = content;
+  }
+  const m = KEY.exec(rest);
+  if (m) {
+    owner = column;
+    rest = rest.slice(m[0].length).trim();
+  } else if (rest === text) {
+    return null;
+  }
+  if (/^[|>][-+]?[0-9]|^[|>][0-9]/.test(rest)) {
+    throw new YamlError("block scalar indentation indicators (|2) aren't supported; indent the text instead", line);
+  }
+  const h = BLOCK_HEADER.exec(rest);
+  return h ? { column: owner, style: h[1], chomp: h[2] } : null;
+}
+
+function readBlockScalar(raw, start, parent, header) {
+  const lines = [];
+  let indent = null;
+  let n = start;
+  for (; n < raw.length; n++) {
+    const s = raw[n];
+    const spaces = /^ */.exec(s)[0].length;
+    if (s.trim() === "") {
+      lines.push("");
+      continue;
+    }
+    if (indent === null) {
+      if (spaces <= parent) break;
+      indent = spaces;
+    }
+    if (spaces < indent) {
+      if (spaces > parent) throw new YamlError("this line is indented less than the block text above it", n + 1);
+      break;
+    }
+    lines.push(s.slice(indent));
+  }
+  // Blank lines after the text belong to whatever comes next, not the scalar.
+  let end = lines.length;
+  while (end > 0 && lines[end - 1] === "") end--;
+  const trailing = lines.length - end;
+  return { value: blockValue(lines.slice(0, end), trailing, header), next: n };
+}
+
+function blockValue(lines, trailing, { style, chomp }) {
+  let text;
+  if (style === "|") {
+    text = lines.join("\n");
+  } else {
+    // Folded: a single line break between two ordinary lines becomes a space;
+    // blank lines and more-indented lines keep their line breaks.
+    text = "";
+    let prev = null;
+    let empty = 0;
+    for (const l of lines) {
+      if (l === "") {
+        empty++;
+        continue;
+      }
+      const more = /^[ \t]/.test(l);
+      if (prev === null) text += "\n".repeat(empty);
+      else if (prev === "text" && !more) text += empty === 0 ? " " : "\n".repeat(empty);
+      else text += "\n".repeat(empty + 1);
+      text += l;
+      prev = more ? "more" : "text";
+      empty = 0;
+    }
+  }
+  if (chomp === "-") return text;
+  if (chomp === "+") return text + "\n".repeat((lines.length > 0 ? 1 : 0) + trailing);
+  return lines.length > 0 ? text + "\n" : "";
 }
 
 function isListItem(text) {
@@ -86,6 +182,10 @@ function parseMap(state, indent) {
     let rest = l.text.slice(m[0].length).trim();
     if (rest.startsWith("#")) rest = "";
     state.i++;
+    if (l.block !== undefined) {
+      map[key] = l.block;
+      continue;
+    }
     if (rest !== "") {
       map[key] = parseScalar(rest, l.line);
       continue;
@@ -121,12 +221,12 @@ function parseList(state, indent) {
     const offset = indent + 1 + (after.length - content.length);
     if (isListItem(content) || KEY.test(content) || content.startsWith("<<")) {
       // The item's first line continues as a nested block at the content's column.
-      lines[state.i] = { indent: offset, text: content, line: l.line };
+      lines[state.i] = { ...l, indent: offset, text: content };
       list.push(parseBlock(state, offset));
       continue;
     }
     state.i++;
-    list.push(parseScalar(content, l.line));
+    list.push(l.block !== undefined ? l.block : parseScalar(content, l.line));
   }
   return list;
 }
@@ -146,7 +246,7 @@ function parseScalar(text, line) {
     if (new RegExp(`^\\${c}\\s*${close}(\\s+#.*)?$`).test(text)) return c === "[" ? [] : {};
     throw new YamlError(`flow ${c === "[" ? "lists ([a, b])" : "maps ({a: b})"} aren't supported; use block style`, line);
   }
-  if (c === "|" || c === ">") throw new YamlError("block scalars (| and >) aren't supported; use a quoted string", line);
+  if (c === "|" || c === ">") throw new YamlError(`unsupported block scalar header "${text}"; use | or > with an optional - or +`, line);
   if (c === "&") throw new YamlError("anchors (&) aren't supported", line);
   if (c === "*") throw new YamlError("aliases (*) aren't supported", line);
   if (c === "!") throw new YamlError("tags (!) aren't supported", line);

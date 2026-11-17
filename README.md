@@ -66,7 +66,7 @@ setup:
   - name: Install JS dependencies
     run: npm ci
   - name: Create test database
-    run: createdb "app_$(printf %s "$HERDR_BRANCH" | tr -c 'a-zA-Z0-9' _)"
+    run: createdb "app_$HERDR_BRANCH_SLUG"
 
 tabs:
   - title: Agent
@@ -82,7 +82,7 @@ tabs:
 
 teardown:
   - name: Drop test database
-    run: dropdb --if-exists "app_$(printf %s "$HERDR_BRANCH" | tr -c 'a-zA-Z0-9' _)"
+    run: dropdb --if-exists "app_$HERDR_BRANCH_SLUG"
 ```
 
 Commit it. Now **New worktree** (the space menu or the + menu) gives a space
@@ -94,6 +94,9 @@ More examples:
 
 - [`examples/node`](examples/node/.herdr): `npm ci`; Agent, Shell, Dev
   (`npm run dev`).
+- [`examples/sail`](examples/sail/.herdr): Laravel Sail, with its own
+  Compose project and ports per worktree, so several worktrees' containers run
+  side by side. Teardown stops them and drops their volumes.
 - [`examples/setup-only`](examples/setup-only/.herdr): setup only; the space
   keeps its tabs and gets a "Setup" tab.
 

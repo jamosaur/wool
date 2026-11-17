@@ -63,8 +63,8 @@ Tabs without setup are fine too.
 | `version` | Required. Always `1`. |
 | `env` | Environment variables for every setup step, pane and background command. A step's or pane's own `env` overrides these. |
 | `setup[]` | Setup steps, run in order. The first step that exits nonzero stops setup. `[]` is valid. |
-| `setup[].run` | Required. Runs as `/bin/sh -c <run>` in the new worktree. |
-| `setup[].name` | The label shown while the step runs. Default: the command. |
+| `setup[].run` | Required. Runs as `/bin/sh -c <run>` in the new worktree. Can be several lines; see [Multi-line commands](#multi-line-commands). |
+| `setup[].name` | The label shown while the step runs. Default: the command's first line. |
 | `setup[].env` | Extra environment variables for this step. |
 | `setupIn` | Run the setup steps in the background with `setupIn: background`. Default: `tab`. |
 | `tabs[]` | The tabs to create, in order (at least one). Only used when the space arrives as a plain shell; see [Which spaces wool acts on](spaces.md#what-wool-does-in-each-space). |
@@ -103,6 +103,33 @@ a reload or an app restart; the files stay.
 Background commands keep running after `git worktree remove`. Stop them
 before you remove the worktree.
 
+## Multi-line commands
+
+`run` and `command` can span several lines with a YAML block scalar. `|` keeps
+the line breaks; `>` joins lines with spaces, so a long command can wrap:
+
+```yaml
+setup:
+  - name: Claim ports
+    run: |
+      # comments and blank lines are part of the command
+      scripts/local/worktree-env.sh \
+        APP_PORT="$(wool-port)" \
+        VITE_PORT="$(wool-port vite)"
+  - name: Install
+    run: >
+      composer install
+      --no-interaction
+      --prefer-dist
+```
+
+The lines run as one `/bin/sh -c` script, like any other `run`. As with a
+script, a failing line doesn't stop the lines after it, and the step's result
+is the last line's. Put `set -e` first to stop at the first failure.
+
+`|-` and `>-` drop the final line break; `|+` and `>+` keep trailing blank
+lines. Indentation indicators (`|2`) aren't supported.
+
 ## Environment variables
 
 wool sets these for setup and teardown steps only. Panes and background
@@ -113,6 +140,21 @@ commands don't get them.
 | `HERDR_WORKTREE` | The new worktree. Setup steps run here. During teardown it no longer exists. |
 | `HERDR_MAIN_WORKTREE` | The repo's main checkout. Teardown steps run here. |
 | `HERDR_BRANCH` | The new worktree's branch. Empty when the worktree is detached. |
+| `HERDR_BRANCH_SLUG` | The branch as a name you can use for a database, Compose project or hostname: lowercase letters, digits and dashes. A branch that already looks like that is used as is (`fix-123`). Any other gets a short hash of the real name appended (`feat/Login` → `feat-login-3f2a9c`), so two branches never share a slug. Empty when the worktree is detached. |
+
+Setup and teardown steps of one worktree see the same values: wool writes them
+down when it sets the worktree up.
+
+## Helper commands
+
+wool puts these on `PATH` for setup and teardown steps.
+
+| Command | Prints |
+|---|---|
+| `wool-port [name]` | A port from 10000 to 19999, picked from the branch name (and `name`, if given). The same branch and name always give the same port, so every worktree can run its own server, and teardown can work out the port again. Give each service its own name: `wool-port` for the app, `wool-port vite`, `wool-port db`. Fails in a detached worktree. |
+
+Ports are picked by hashing, not reserved: two branches can, rarely, land on
+the same port.
 
 ## Where the file is read from
 
@@ -129,8 +171,10 @@ wool uses the first file it finds:
 ## Supported YAML
 
 wool has its own small YAML reader. It supports maps, lists, strings, numbers,
-`true`/`false`, comments, `[]` and `{}`.
+`true`/`false`, comments, `[]`, `{}`, and `|` and `>` block scalars (see
+[Multi-line commands](#multi-line-commands)).
 
-It rejects the following with a line number: tab indentation, `|` and `>`
-block scalars, anchors and aliases, flow lists with items (`[a, b]`), and
-multiple documents in one file. Quote any value that contains `: ` or ` #`.
+It rejects the following with a line number: tab indentation, anchors and
+aliases, flow lists with items (`[a, b]`), block scalar indentation indicators
+(`|2`), and multiple documents in one file. Quote any value that contains `: `
+or ` #`.
