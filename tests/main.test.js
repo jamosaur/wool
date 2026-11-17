@@ -172,7 +172,7 @@ test("watchRequests cancels each folder watch it stops waiting on", async () => 
   assert.ok(watches.every((w) => w.path.endsWith("/wool/requests")));
 });
 
-test("teardown: runs through the login shell, with the branch slug and wool-port", async () => {
+test("teardown: runs through the login shell, with the branch slug", async () => {
   const t = setup();
   // A stand-in for the person's shell: marks the environment, then runs argv.
   const bin = join(t.root, "bin");
@@ -184,13 +184,12 @@ test("teardown: runs through the login shell, with the branch slug and wool-port
   writeFileSync(join(t.wt.main, ".git", "HEAD"), "ref: refs/heads/main\n");
   const wt = { ...t.wt, branch: "Feat/Ports", recordDir: join(t.wt.main, ".git", "wool", "wt") };
   await t.wool.writeRecord(t.space, wt, [
-    { name: "record", run: 'printf "%s %s %s" "$FROM_LOGIN" "$HERDR_BRANCH_SLUG" "$(wool-port db)" > torn.txt', env: {} },
+    { name: "record", run: 'printf "%s %s" "$FROM_LOGIN" "$HERDR_BRANCH_SLUG" > torn.txt', env: {} },
   ]);
   await t.wool.runTeardown(t.cx, t.wool.records.get(t.space.id));
-  const [login, slug, port] = readFileSync(join(t.wt.main, "torn.txt"), "utf8").split(" ");
+  const [login, slug] = readFileSync(join(t.wt.main, "torn.txt"), "utf8").split(" ");
   assert.equal(login, "yes");
   assert.match(slug, /^feat-ports-[0-9a-f]{6}$/);
-  assert.ok(Number(port) >= 10000 && Number(port) <= 19999, port);
   assert.ok(!existsSync(wt.recordDir), "the record is deleted after teardown");
   assert.equal(globalThis.herdr.notes.at(-1).level, "success");
 });

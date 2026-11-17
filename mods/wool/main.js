@@ -56,7 +56,6 @@ export default class Wool extends View {
     this.firstSeen = new Map(); // space id -> ms when first seen, while pending
     this.records = new Map(); // space id -> { record, worktree } for spaces with a teardown
     this.binDir = `${appHome()}/mods/wool/bin`;
-    this.helpersDir = `${this.binDir}/helpers`;
     this.shell = null; // $SHELL, once asked
     this.asking = new Map(); // worktree -> wool tab's pane, while its prompt is open
   }
@@ -167,7 +166,7 @@ export default class Wool extends View {
     if (hasSetup) {
       const script = setupScript(cfg.steps, {
         HERDR_WORKTREE: wt.worktree, HERDR_MAIN_WORKTREE: wt.main, HERDR_BRANCH: wt.branch,
-      }, this.helpersDir);
+      });
       const w = await writeFile(`${wt.stateDir}/setup.sh`, script);
       if (w.code !== 0) throw new Error(`couldn't write ${wt.stateDir}/setup.sh: ${w.stderr.trim()}`);
     }
@@ -203,7 +202,7 @@ export default class Wool extends View {
   async writeRecord(space, wt, steps) {
     const script = teardownScript(steps, {
       HERDR_WORKTREE: wt.worktree, HERDR_MAIN_WORKTREE: wt.main, HERDR_BRANCH: wt.branch,
-    }, this.helpersDir);
+    });
     const w = await exec("sh", [
       "-c",
       'mkdir -p "$1" && rm -f "$1/status" "$1/teardown.log" && printf %s "$2" > "$1/teardown.sh" && printf "%s\\n" "$3" > "$1/worktree"',

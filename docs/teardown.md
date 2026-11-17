@@ -45,8 +45,7 @@ Homebrew, nvm, …).
 The worktree's files are gone by then, so a step can't read the worktree's
 `.env` or any other file in it. To find resources that setup created, work out
 their names from the branch in both setup and teardown, as the example does
-with `HERDR_BRANCH_SLUG`. Teardown steps get the same variables and helper
-commands as setup steps; see
+with `HERDR_BRANCH_SLUG`. Teardown steps get the same variables as setup steps; see
 [Environment variables](configuration.md#environment-variables).
 
 For example, a worktree that runs its own Docker Compose project can't run

@@ -14,19 +14,18 @@ export function label(step) {
   return lines.length > 1 ? `${lines[0]} …` : (lines[0] ?? "");
 }
 
-// env: HERDR_WORKTREE, HERDR_MAIN_WORKTREE, HERDR_BRANCH. helpers: a folder
-// to put first on PATH (wool-port), or null.
-export function setupScript(steps, env, helpers = null) {
-  return stepsScript(steps, env, helpers, "HERDR_WORKTREE");
+// env: HERDR_WORKTREE, HERDR_MAIN_WORKTREE, HERDR_BRANCH.
+export function setupScript(steps, env) {
+  return stepsScript(steps, env, "HERDR_WORKTREE");
 }
 
-export function teardownScript(steps, env, helpers = null) {
-  return stepsScript(steps, env, helpers, "HERDR_MAIN_WORKTREE");
+export function teardownScript(steps, env) {
+  return stepsScript(steps, env, "HERDR_MAIN_WORKTREE");
 }
 
 // Everything is written as values, not worked out when the script runs, so a
 // teardown sees exactly what its setup saw.
-function stepsScript(steps, env, helpers, dirVar) {
+function stepsScript(steps, env, dirVar) {
   const q = shellQuote;
   const lines = [
     "#!/bin/sh",
@@ -37,7 +36,6 @@ function stepsScript(steps, env, helpers, dirVar) {
     `HERDR_BRANCH=${q(env.HERDR_BRANCH)}`,
     `HERDR_BRANCH_SLUG=${q(branchSlug(env.HERDR_BRANCH))}`,
     "export HERDR_WORKTREE HERDR_MAIN_WORKTREE HERDR_BRANCH HERDR_BRANCH_SLUG",
-    ...(helpers ? [`PATH=${q(helpers)}:$PATH`, "export PATH"] : []),
     `cd "$${dirVar}" || { echo "wool: can't enter $${dirVar}"; exit 1; }`,
     "wool_step() {",
     "  wool_label=$1; shift",

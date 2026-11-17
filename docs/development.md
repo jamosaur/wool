@@ -62,8 +62,6 @@ All files are under `mods/wool/`.
   - `wool-trust.sh`: wool's trust gate for config files.
   - `wool-records.sh`: lists the teardown records of a repo.
   - `wool-teardown.sh`: runs teardown steps once the worktree is gone.
-  - `helpers/`: commands put on `PATH` for setup and teardown steps
-    (`wool-port`). They must stay executable.
 - `mod.json` tells Herdr to run wool as an invisible window.
 
 Tests are in `tests/`, one file per `lib/` module plus `main.test.js` and

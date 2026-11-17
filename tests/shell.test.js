@@ -9,7 +9,6 @@ import { shellQuote, setupScript, teardownScript, teardownArgv, label, runArgv, 
 import { branchSlug } from "../mods/wool/lib/names.js";
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), "..", "mods", "wool", "bin");
-const HELPERS = join(BIN, "helpers");
 const tmp = (name = "wool test ") => mkdtempSync(join(tmpdir(), name));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -367,47 +366,18 @@ test("wool-run interrupted with Ctrl-C stops the running step too", async () => 
   assert.match(out, /setup interrupted/);
 });
 
-test("setup script exports the branch slug and puts the helpers on PATH", () => {
+test("setup and teardown scripts export the branch slug", () => {
   const worktree = tmp("wt ");
   const dir = tmp("state ");
   writeFileSync(join(dir, "setup.sh"), setupScript(
-    [{ name: "names", run: 'printf "%s|%s|%s" "$HERDR_BRANCH_SLUG" "$(wool-port)" "$(wool-port vite)" > names.txt', env: {} }],
+    [{ name: "slug", run: 'printf %s "$HERDR_BRANCH_SLUG" > slug.txt', env: {} }],
     { HERDR_WORKTREE: worktree, HERDR_MAIN_WORKTREE: "/main", HERDR_BRANCH: "feat/x" },
-    HELPERS,
   ));
   const r = run(["sh", join(dir, "setup.sh")]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  const [slug, app, vite] = readFileSync(join(worktree, "names.txt"), "utf8").split("|");
-  assert.equal(slug, branchSlug("feat/x"));
-  assert.notEqual(app, vite);
-});
-
-test("without a helpers folder, the script leaves PATH alone", () => {
-  const script = setupScript([], { HERDR_WORKTREE: "/w", HERDR_MAIN_WORKTREE: "/m", HERDR_BRANCH: "b" });
-  assert.doesNotMatch(script, /PATH=/);
-});
-
-const port = (branch, ...args) => run([join(HELPERS, "wool-port"), ...args], { env: { ...process.env, HERDR_BRANCH: branch } });
-
-test("wool-port gives a stable port from 10000 to 19999 per branch and name", () => {
-  const seen = new Set();
-  for (const b of ["main", "feat/x", "feat/y", "it's $x"]) {
-    for (const name of [[], ["vite"], ["pgsql"]]) {
-      const a = port(b, ...name);
-      assert.equal(a.status, 0, a.stderr);
-      const n = Number(a.stdout.trim());
-      assert.ok(n >= 10000 && n <= 19999, a.stdout);
-      assert.equal(port(b, ...name).stdout, a.stdout);
-      seen.add(n);
-    }
-  }
-  assert.ok(seen.size > 6, "ports spread out");
-});
-
-test("wool-port fails without a branch", () => {
-  const r = port("");
-  assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /detached/);
+  assert.equal(readFileSync(join(worktree, "slug.txt"), "utf8"), branchSlug("feat/x"));
+  const env = { HERDR_WORKTREE: "/w", HERDR_MAIN_WORKTREE: "/m", HERDR_BRANCH: "feat/x" };
+  assert.match(teardownScript([], env), new RegExp(`^HERDR_BRANCH_SLUG='${branchSlug("feat/x")}'$`, "m"));
 });
 
 test("a multi-line run runs every line; its label is the first line", () => {

@@ -97,8 +97,8 @@ prompt tab. wool itself never shows.
   `schema.js` (validation + normalisation), `config.js` (lookup order:
   main `wool.yml`, worktree `wool.yml`, worktree `wool.yml.dist`, main
   `wool.yml.dist`), `detect.js` (classification, claim parsing), `shell.js` (setup and
-  teardown scripts with `HERDR_*` and `HERDR_BRANCH_SLUG` written in as values
-  and `bin/helpers` first on `PATH`; argv builders), `plan.js` (steps: `tab`, `split`, `setupInBackground`, `background`,
+  teardown scripts with `HERDR_*` and `HERDR_BRANCH_SLUG` written in as values;
+  argv builders), `plan.js` (steps: `tab`, `split`, `setupInBackground`, `background`,
   `closeOriginal`, `focus`), `trust.js` (`parseCheck`, `readAnswer`, `requestNonce`,
   `promptTab`, `spaceForFolder`).
 - `mods/wool/bin/` (POSIX `sh`): `wool-claim.sh` (`mkdir <git-dir>/wool` as an
@@ -112,10 +112,9 @@ prompt tab. wool itself never shows.
   `forget`, `run`, `prompt`; store `trust.tsv` rewritten under a `mkdir` lock
   with temp file + `mv`; no `trust` subcommand). `wool-claim.sh <folder> rerun`
   skips the age check and clears old state. `wool-teardown.sh` (runs a
-  record's `teardown.sh` once its worktree is gone). `helpers/wool-port`
-  (executable; `cksum` of `[name-]branch` into 10000-19999).
+  record's `teardown.sh` once its worktree is gone).
 - No shipped mods are changed. Programs run: `git`, `sh`, `find`, `nohup`,
-  `shasum`/`sha256sum`, `cksum`, and the repo's commands.
+  `shasum`/`sha256sum`, and the repo's commands.
 
 ## Watch out
 
