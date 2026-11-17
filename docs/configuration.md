@@ -66,6 +66,7 @@ Tabs without setup are fine too.
 | `setup[].run` | Required. Runs as `/bin/sh -c <run>` in the new worktree. |
 | `setup[].name` | The label shown while the step runs. Default: the command. |
 | `setup[].env` | Extra environment variables for this step. |
+| `setupIn` | Run the setup steps in the background with `setupIn: background`. Default: `tab`. |
 | `tabs[]` | The tabs to create, in order (at least one). Only used when the space arrives as a plain shell; see [Which spaces wool acts on](spaces.md#what-wool-does-in-each-space). |
 | `tabs[].title` | The tab's name. Default: its number. |
 | `tabs[].panes[]` | The tab's panes (at least one). The first pane fills the tab; each later pane splits off the one before it. |
@@ -89,7 +90,8 @@ and `agent`, a `prompt` without `agent`, or more than one `setup: true` pane.
 
 Each `background[]` entry has a `command` and optional `env` and
 `waitForSetup`, with the same meaning as for panes. Background commands need
-`tabs`.
+`tabs`. Like setup in the background, they run through your interactive login
+shell to get your `PATH`.
 
 wool writes each command's output, process ID and exit code to files in the
 worktree's git dir: `wool/bg-<n>.log`, `wool/bg-<n>.pid` and
