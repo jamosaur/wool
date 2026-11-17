@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync, readdirSync, rmSync } from "node:fs";
@@ -41,7 +42,7 @@ function wool(fx, args, opts = {}) {
   return spawnSync("sh", [WOOL, ...args], { encoding: "utf8", env: { ...process.env, XDG_CONFIG_HOME: fx.xdg }, ...opts });
 }
 
-const sha = (s) => execFileSync("shasum", ["-a", "256"], { input: s, encoding: "utf8" }).split(" ")[0];
+const sha = (s) => createHash("sha256").update(s).digest("hex");
 
 function check(fx) {
   const r = wool(fx, ["check", fx.state, fx.main, fx.path, NONCE]);

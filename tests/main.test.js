@@ -1,8 +1,8 @@
 // main.js's trust gate, run in Node against a fake Herdr (tests/stubs).
 import { test } from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { register } from "node:module";
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -14,7 +14,7 @@ const { setupScript, headlessRunArgv } = await import("../mods/wool/lib/shell.js
 
 const MOD = join(dirname(fileURLToPath(import.meta.url)), "..", "mods", "wool");
 const CONFIG = "version: 1\nsetup:\n  - run: echo hi\n";
-const sha = (s) => execFileSync("shasum", ["-a", "256"], { input: s, encoding: "utf8" }).split(" ")[0];
+const sha = (s) => createHash("sha256").update(s).digest("hex");
 
 function setup({ onTab } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "wool main ")));
