@@ -1,8 +1,8 @@
 // main.js's trust gate, run in Node against a fake Herdr (tests/stubs).
 import { test } from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { register } from "node:module";
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, realpathSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -14,7 +14,7 @@ const { setupScript, headlessRunArgv } = await import("../mods/wool/lib/shell.js
 
 const MOD = join(dirname(fileURLToPath(import.meta.url)), "..", "mods", "wool");
 const CONFIG = "version: 1\nsetup:\n  - run: echo hi\n";
-const sha = (s) => execFileSync("shasum", ["-a", "256"], { input: s, encoding: "utf8" }).split(" ")[0];
+const sha = (s) => createHash("sha256").update(s).digest("hex");
 
 function setup({ onTab } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "wool main ")));
@@ -170,4 +170,26 @@ test("watchRequests cancels each folder watch it stops waiting on", async () => 
   assert.ok(watches.length >= 5, `only ${watches.length} watches`);
   assert.deepEqual(watches.filter((w) => !w.cancelled), [], "every watch is cancelled");
   assert.ok(watches.every((w) => w.path.endsWith("/wool/requests")));
+});
+
+test("teardown: runs through the login shell, with the branch slug", async () => {
+  const t = setup();
+  // A stand-in for the person's shell: marks the environment, then runs argv.
+  const bin = join(t.root, "bin");
+  mkdirSync(bin);
+  const shell = join(bin, "bash");
+  writeFileSync(shell, '#!/bin/sh\n[ "$1" = -lic ] || exit 9\nexport FROM_LOGIN=yes\nshift 3\nexec "$@"\n', { mode: 0o755 });
+  t.wool.shell = shell;
+  mkdirSync(join(t.wt.main, ".git"), { recursive: true });
+  writeFileSync(join(t.wt.main, ".git", "HEAD"), "ref: refs/heads/main\n");
+  const wt = { ...t.wt, branch: "Feat/Ports", recordDir: join(t.wt.main, ".git", "wool", "wt") };
+  await t.wool.writeRecord(t.space, wt, [
+    { name: "record", run: 'printf "%s %s" "$FROM_LOGIN" "$HERDR_BRANCH_SLUG" > torn.txt', env: {} },
+  ]);
+  await t.wool.runTeardown(t.cx, t.wool.records.get(t.space.id));
+  const [login, slug] = readFileSync(join(t.wt.main, "torn.txt"), "utf8").split(" ");
+  assert.equal(login, "yes");
+  assert.match(slug, /^feat-ports-[0-9a-f]{6}$/);
+  assert.ok(!existsSync(wt.recordDir), "the record is deleted after teardown");
+  assert.equal(globalThis.herdr.notes.at(-1).level, "success");
 });

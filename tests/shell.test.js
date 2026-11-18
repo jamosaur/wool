@@ -5,7 +5,8 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, realpa
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { shellQuote, setupScript, teardownScript, runArgv, waitArgv, bgArgv, headlessRunArgv, withEnv } from "../mods/wool/lib/shell.js";
+import { shellQuote, setupScript, teardownScript, teardownArgv, label, runArgv, waitArgv, bgArgv, headlessRunArgv, withEnv } from "../mods/wool/lib/shell.js";
+import { branchSlug } from "../mods/wool/lib/names.js";
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), "..", "mods", "wool", "bin");
 const tmp = (name = "wool test ") => mkdtempSync(join(tmpdir(), name));
@@ -363,4 +364,37 @@ test("wool-run interrupted with Ctrl-C stops the running step too", async () => 
   await sleep(2500);
   assert.ok(!existsSync(join(worktree, "marker")), "the step kept running after Ctrl-C");
   assert.match(out, /setup interrupted/);
+});
+
+test("setup and teardown scripts export the branch slug", () => {
+  const worktree = tmp("wt ");
+  const dir = tmp("state ");
+  writeFileSync(join(dir, "setup.sh"), setupScript(
+    [{ name: "slug", run: 'printf %s "$HERDR_BRANCH_SLUG" > slug.txt', env: {} }],
+    { HERDR_WORKTREE: worktree, HERDR_MAIN_WORKTREE: "/main", HERDR_BRANCH: "feat/x" },
+  ));
+  const r = run(["sh", join(dir, "setup.sh")]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.equal(readFileSync(join(worktree, "slug.txt"), "utf8"), branchSlug("feat/x"));
+  const env = { HERDR_WORKTREE: "/w", HERDR_MAIN_WORKTREE: "/m", HERDR_BRANCH: "feat/x" };
+  assert.match(teardownScript([], env), new RegExp(`^HERDR_BRANCH_SLUG='${branchSlug("feat/x")}'$`, "m"));
+});
+
+test("a multi-line run runs every line; its label is the first line", () => {
+  const { dir, worktree } = state([{ name: null, run: "\n  echo one > one.txt\necho two > two.txt\n", env: {} }]);
+  const r = run(["sh", join(dir, "setup.sh")]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(existsSync(join(worktree, "one.txt")) && existsSync(join(worktree, "two.txt")));
+  assert.match(r.stdout, /==> echo one > one.txt …\n/);
+});
+
+test("label", () => {
+  assert.equal(label({ name: "Install", run: "x" }), "Install");
+  assert.equal(label({ name: null, run: "npm ci" }), "npm ci");
+  assert.equal(label({ name: null, run: "a\nb\n" }), "a …");
+  assert.equal(label({ name: "Ports\n", run: "a\nb" }), "Ports");
+});
+
+test("teardownArgv", () => {
+  assert.deepEqual(teardownArgv("/bin dir", "/rec"), ["sh", "/bin dir/wool-teardown.sh", "/rec"]);
 });

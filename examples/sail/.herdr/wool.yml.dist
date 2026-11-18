@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/svenluijten/wool/main/schema/wool.schema.json
+#
+# Every worktree gets its own Laravel Sail stack. The Compose project name and
+# all published ports come from the branch, so several worktrees can have their
+# containers up at once without fighting over localhost.
+version: 1
+
+setup:
+  # Copying beats a cold install; the next steps catch up with this branch.
+  # On Linux, cp -a --reflink=auto makes this near-instant on btrfs and XFS.
+  - name: Copy .env, vendor and node_modules from the main checkout
+    run: |
+      for f in .env vendor node_modules; do
+        cp -R "$HERDR_MAIN_WORKTREE/$f" .
+      done
+  - name: Give this worktree its own Compose project and ports
+    run: |
+      set -e
+      # A port from 10000 to 19999, the same every time for this branch and name.
+      port() {
+        echo $((10000 + $(printf %s "$1-$HERDR_BRANCH" | cksum | cut -d' ' -f1) % 10000))
+      }
+      set_env() {
+        grep -v "^$1=" .env > .env.wool || true
+        printf '%s=%s\n' "$1" "$2" >> .env.wool
+        mv .env.wool .env
+      }
+      app=$(port app)
+      set_env COMPOSE_PROJECT_NAME "app-$HERDR_BRANCH_SLUG"
+      set_env APP_PORT "$app"
+      set_env APP_URL "http://localhost:$app"
+      set_env VITE_PORT "$(port vite)"
+      set_env FORWARD_DB_PORT "$(port db)"
+      set_env FORWARD_REDIS_PORT "$(port redis)"
+      set_env FORWARD_MAILPIT_PORT "$(port mailpit)"
+      set_env FORWARD_MAILPIT_DASHBOARD_PORT "$(port mailpit-ui)"
+  - name: Install PHP dependencies
+    run: composer install --no-interaction
+  - name: Start Sail
+    run: ./vendor/bin/sail up -d --wait
+  - name: Install JS dependencies
+    run: ./vendor/bin/sail npm install
+  - name: Migrate
+    run: ./vendor/bin/sail artisan migrate --force
+  - name: URL
+    run: grep '^APP_URL=' .env
+
+tabs:
+  - title: Agent
+    panes:
+      - agent: default
+  - title: Shell
+    panes:
+      - setup: true
+
+# The worktree (and its vendor/bin/sail) is gone by now: stop its project by
+# name, using the main checkout's compose file.
+teardown:
+  - name: Stop Sail and drop this worktree's volumes
+    run: docker compose -p "app-$HERDR_BRANCH_SLUG" down --volumes --remove-orphans

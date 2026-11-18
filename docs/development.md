@@ -51,6 +51,7 @@ All files are under `mods/wool/`.
   - `detect.js`: decides what a newly seen space is.
   - `plan.js`: plans the tab layout.
   - `shell.js`: generates the setup and teardown scripts.
+  - `names.js`: works out `HERDR_BRANCH_SLUG` from the branch.
   - `trust.js`: reads the output of the trust check.
 - `bin/` holds the POSIX `sh` scripts that run in terminals or in the
   background:

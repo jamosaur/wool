@@ -64,7 +64,7 @@ Tabs without setup are fine too.
 | `env` | Environment variables for every setup step, pane and background command. A step's or pane's own `env` overrides these. |
 | `setup[]` | Setup steps, run in order. The first step that exits nonzero stops setup. `[]` is valid. |
 | `setup[].run` | Required. Runs as `/bin/sh -c <run>` in the new worktree. |
-| `setup[].name` | The label shown while the step runs. Default: the command. |
+| `setup[].name` | The label shown while the step runs. Default: the command's first line. |
 | `setup[].env` | Extra environment variables for this step. |
 | `setupIn` | Run the setup steps in the background with `setupIn: background`. Default: `tab`. |
 | `tabs[]` | The tabs to create, in order (at least one). Only used when the space arrives as a plain shell; see [Which spaces wool acts on](spaces.md#what-wool-does-in-each-space). |
@@ -113,6 +113,10 @@ commands don't get them.
 | `HERDR_WORKTREE` | The new worktree. Setup steps run here. During teardown it no longer exists. |
 | `HERDR_MAIN_WORKTREE` | The repo's main checkout. Teardown steps run here. |
 | `HERDR_BRANCH` | The new worktree's branch. Empty when the worktree is detached. |
+| `HERDR_BRANCH_SLUG` | The branch as a name you can use for a database, Compose project or hostname: lowercase letters, digits and dashes. A branch that already looks like that is used as is (`fix-123`). Any other gets a short hash of the real name appended (`feat/Login` → `feat-login-3f2a9c`), so two branches never share a slug. Empty when the worktree is detached. |
+
+Setup and teardown steps of one worktree see the same values: wool writes them
+down when it sets up the worktree.
 
 ## Where the file is read from
 
@@ -129,8 +133,9 @@ wool uses the first file it finds:
 ## Supported YAML
 
 wool has its own small YAML reader. It supports maps, lists, strings, numbers,
-`true`/`false`, comments, `[]` and `{}`.
+`true`/`false`, comments, `[]`, `{}`, and `|` and `>` block scalars.
 
-It rejects the following with a line number: tab indentation, `|` and `>`
-block scalars, anchors and aliases, flow lists with items (`[a, b]`), and
-multiple documents in one file. Quote any value that contains `: ` or ` #`.
+It rejects the following with a line number: tab indentation, anchors and
+aliases, flow lists with items (`[a, b]`), block scalar indentation indicators
+(`|2`), and multiple documents in one file. Quote any value that contains `: `
+or ` #`.

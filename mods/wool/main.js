@@ -18,8 +18,8 @@ import { loadConfig } from "./lib/config.js";
 import {
   classifySpace, newSpaces, parseClaim, originalIsIdle, closedSpaces, parseRecords, FRESH_MINUTES, PENDING_LIMIT_MS,
 } from "./lib/detect.js";
-import { setupScript, teardownScript } from "./lib/shell.js";
-import { planLayout, planSetupOnly, pickAgent } from "./lib/plan.js";
+import { setupScript, teardownScript, teardownArgv } from "./lib/shell.js";
+import { planLayout, planSetupOnly, pickAgent, inLoginShell } from "./lib/plan.js";
 import { parseCheck, readAnswer, requestNonce, promptTab, spaceForFolder } from "./lib/trust.js";
 
 const STEP_TIMEOUT_MS = 5000;
@@ -56,6 +56,7 @@ export default class Wool extends View {
     this.firstSeen = new Map(); // space id -> ms when first seen, while pending
     this.records = new Map(); // space id -> { record, worktree } for spaces with a teardown
     this.binDir = `${appHome()}/mods/wool/bin`;
+    this.shell = null; // $SHELL, once asked
     this.asking = new Map(); // worktree -> wool tab's pane, while its prompt is open
   }
 
@@ -170,11 +171,7 @@ export default class Wool extends View {
       if (w.code !== 0) throw new Error(`couldn't write ${wt.stateDir}/setup.sh: ${w.stderr.trim()}`);
     }
 
-    let shell = shellHint;
-    if (!shell) {
-      const r = await exec("sh", ["-c", 'printf %s "${SHELL:-/bin/sh}"']).catch(() => null);
-      shell = r?.stdout.trim() || "/bin/sh";
-    }
+    const shell = shellHint || (await this.loginShell());
     const ctx = { binDir: this.binDir, stateDir: wt.stateDir, shell, agentArgv: null };
     if (layout && cfg.tabs.some((t) => t.panes.some((p) => p.kind === "agent"))) {
       // If Herdr can't list agents, agent panes become shells (with a warning).
@@ -190,6 +187,14 @@ export default class Wool extends View {
     if (hasSetup) await this.watchSetup(cx, wt, space, cfg.setupIn);
     const bg = plan.steps.filter((s) => s.op === "background").length;
     if (bg > 0) await this.watchBackground(cx, wt, bg);
+  }
+
+  async loginShell() {
+    if (!this.shell) {
+      const r = await exec("sh", ["-c", 'printf %s "${SHELL:-/bin/sh}"']).catch(() => null);
+      this.shell = r?.stdout.trim() || "/bin/sh";
+    }
+    return this.shell;
   }
 
   // Written now because the worktree's files (and its .herdr/wool.yml.dist)
@@ -242,11 +247,13 @@ export default class Wool extends View {
     }
   }
 
-  // Runs in the background (exec has a 30 s limit); the record folder
-  // disappearing means it succeeded.
+  // Runs in the background (exec has a 30 s limit) through the person's login
+  // shell, for the PATH their tools are on; the record folder disappearing
+  // means it succeeded.
   async runTeardown(cx, rec) {
     const name = rec.record.split("/").pop();
-    const r = await exec("sh", ["-c", 'nohup sh "$1" "$2" >/dev/null 2>&1 &', "sh", `${this.binDir}/wool-teardown.sh`, rec.record]);
+    const argv = inLoginShell(teardownArgv(this.binDir, rec.record), await this.loginShell());
+    const r = await exec("sh", ["-c", 'nohup "$@" >/dev/null 2>&1 </dev/null &', "sh", ...argv]);
     if (r.code !== 0) {
       notify({ title: `wool: teardown of ${name} didn't start`, body: r.stderr.trim(), level: "error" });
       return;

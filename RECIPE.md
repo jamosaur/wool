@@ -90,10 +90,14 @@ prompt tab. wool itself never shows.
   true}`, `pane.focus {pane}`. New tab/pane ids are found by diffing
   `spaces()`/`panes()` every 100 ms for up to 5 s after each command
   (`run()` returns nothing).
-- `mods/wool/lib/` (pure, `node --test`): `yaml.js` (strict YAML subset),
+- `mods/wool/lib/` (pure, `node --test`): `yaml.js` (strict YAML subset,
+  with `|`/`>` block scalars read raw in the tokenizer), `names.js`
+  (`branchSlug`: lowercase/digits/dashes, plus an FNV-1a hash when it changed
+  the name),
   `schema.js` (validation + normalisation), `config.js` (lookup order:
   main `wool.yml`, worktree `wool.yml`, worktree `wool.yml.dist`, main
-  `wool.yml.dist`), `detect.js` (classification, claim parsing), `shell.js` (setup script,
+  `wool.yml.dist`), `detect.js` (classification, claim parsing), `shell.js` (setup and
+  teardown scripts with `HERDR_*` and `HERDR_BRANCH_SLUG` written in as values;
   argv builders), `plan.js` (steps: `tab`, `split`, `setupInBackground`, `background`,
   `closeOriginal`, `focus`), `trust.js` (`parseCheck`, `readAnswer`, `requestNonce`,
   `promptTab`, `spaceForFolder`).
@@ -107,7 +111,8 @@ prompt tab. wool itself never shows.
   `bg-<n>.log`/`bg-<n>.pid`/`bg-<n>.exit`), `wool-trust.sh` (`check`, `list`,
   `forget`, `run`, `prompt`; store `trust.tsv` rewritten under a `mkdir` lock
   with temp file + `mv`; no `trust` subcommand). `wool-claim.sh <folder> rerun`
-  skips the age check and clears old state.
+  skips the age check and clears old state. `wool-teardown.sh` (runs a
+  record's `teardown.sh` once its worktree is gone).
 - No shipped mods are changed. Programs run: `git`, `sh`, `find`, `nohup`,
   `shasum`/`sha256sum`, and the repo's commands.
 
@@ -125,8 +130,9 @@ prompt tab. wool itself never shows.
 - `tab.new` takes focus and switches the window to its space. Give focus back
   with `pane.focus {pane}` for spaces you don't lay out.
 - `exec` runs with the app's bare `PATH` (no Herd, nvm, Homebrew). Anything
-  started without a terminal goes through `inLoginShell` (`$SHELL -lic 'exec
-  "$@"'`); tools are often added in `.zshrc`, so `-l` alone isn't enough.
+  started without a terminal (background setup and commands, teardown) goes
+  through `inLoginShell` (`$SHELL -lic 'exec "$@"'`); tools are often added in
+  `.zshrc`, so `-l` alone isn't enough.
 - `git rev-parse --git-dir` is relative (`.git`) in a main checkout: compare
   `--path-format=absolute` dirs. Git sanitises a worktree's admin-dir name
   (`wt b` → `wt-b`).
